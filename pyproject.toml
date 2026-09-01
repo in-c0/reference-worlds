@@ -9,18 +9,19 @@ description = "Benchmark utilities for reference-anchored persistent world synth
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
-dependencies = ["numpy>=1.26"]
+dependencies = ["numpy==1.26.1"]
 
 [project.optional-dependencies]
-camera = ["opencv-python-headless>=4.10"]
-method = ["Pillow>=10", "opencv-python-headless>=4.10"]
+camera = ["opencv-python-headless==4.10.0.84"]
+method = ["Pillow>=10", "opencv-python-headless==4.10.0.84"]
 validation = ["jsonschema>=4.23"]
-dev = ["pytest>=8", "jsonschema>=4.23", "opencv-python-headless>=4.10", "Pillow>=10"]
+dev = ["pytest>=8", "jsonschema>=4.23", "opencv-python-headless==4.10.0.84", "Pillow>=10"]
 
 [project.scripts]
 refworld-validate-report = "refworld.cli:validate_report_main"
 refworld-prepare-blendedmvs = "refworld.cli:prepare_blendedmvs_main"
 refworld-worldgen-run = "refworld.runners.worldgen_generate:main"
+refworld-vggt-prefetch = "refworld.runners.prefetch_vggt:main"
 refworld-vggt-source = "refworld.runners.vggt_source:main"
 refworld-source-splat = "refworld.runners.source_splat:main"
 refworld-warp-only = "refworld.runners.warp_only:main"
