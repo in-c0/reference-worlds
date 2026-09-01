@@ -19,6 +19,7 @@ dev = ["pytest>=8", "jsonschema>=4.23", "opencv-python-headless>=4.10"]
 [project.scripts]
 refworld-validate-report = "refworld.cli:validate_report_main"
 refworld-prepare-blendedmvs = "refworld.cli:prepare_blendedmvs_main"
+refworld-marble-stage1 = "refworld.cli:marble_stage1_main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
