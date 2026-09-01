@@ -26,9 +26,6 @@ function Require-Command([string]$Name, [string]$Hint) {
     }
 }
 
-# Windows PowerShell 5.1 may turn a native process' stderr into ErrorRecords.
-# Expected native failures/probes therefore run with non-terminating error handling
-# and are judged only by the process exit code.
 function Invoke-NativeProbe([string]$File, [string[]]$Arguments) {
     $oldPreference = $ErrorActionPreference
     try {
@@ -58,9 +55,12 @@ function Invoke-NativeChecked([string]$Label, [string]$File, [string[]]$Argument
 function Invoke-PythonLogged([string]$Label, [string]$Python, [string[]]$Arguments, [string]$LogPath) {
     Write-Host $Label -ForegroundColor Cyan
     $oldPreference = $ErrorActionPreference
+    $lines = @()
     try {
         $ErrorActionPreference = 'Continue'
-        $lines = & $Python @Arguments 2>&1 | Tee-Object -FilePath $LogPath -Append
+        # Do not assign the pipeline result: that would suppress live output in
+        # Windows PowerShell 5.1. Tee into a variable while still streaming to host.
+        & $Python @Arguments 2>&1 | Tee-Object -FilePath $LogPath -Append -Variable lines
         $code = $LASTEXITCODE
     } finally {
         $ErrorActionPreference = $oldPreference
@@ -141,21 +141,19 @@ Invoke-NativeChecked 'Bootstrapping pip/setuptools/wheel' $VenvPython @(
     '-m','pip','install','--disable-pip-version-check','--upgrade','pip','setuptools','wheel'
 )
 
-# Deliberately install the pinned wheels idempotently instead of probing a possibly
-# absent torch import. This avoids the PowerShell 5.1 NativeCommandError footgun.
 Invoke-NativeChecked 'Ensuring pinned PyTorch 2.3.1 CUDA 12.1 environment' $VenvPython @(
     '-m','pip','install',
     'torch==2.3.1','torchvision==0.18.1',
     '--index-url','https://download.pytorch.org/whl/cu121'
 )
 
-Invoke-NativeChecked 'Installing RefWorld/VGGT dependencies' $VenvPython @(
+Invoke-NativeChecked 'Installing pinned RefWorld/VGGT dependencies' $VenvPython @(
     '-m','pip','install','-e','.[dev,method]','huggingface_hub','einops','safetensors'
 )
 
-Invoke-NativeChecked 'Verifying CUDA from PyTorch' $VenvPython @(
+Invoke-NativeChecked 'Verifying CUDA + NumPy compatibility' $VenvPython @(
     '-c',
-    "import torch; print('torch', torch.__version__); print('cuda runtime', torch.version.cuda); print('gpu', torch.cuda.get_device_name(0)); assert torch.__version__.startswith('2.3.1'); assert torch.cuda.is_available()"
+    "import numpy as np, torch; print('numpy', np.__version__); print('torch', torch.__version__); print('cuda runtime', torch.version.cuda); print('gpu', torch.cuda.get_device_name(0)); assert np.__version__ == '1.26.1'; assert torch.__version__.startswith('2.3.1'); assert torch.cuda.is_available()"
 )
 
 $UpstreamRoot = Join-Path $RepoRoot '.upstream'
@@ -172,6 +170,19 @@ if ((Invoke-NativeProbe 'git' @('-C',$VggtRoot,'cat-file','-e',"$VggtPin^{commit
 Invoke-NativeChecked 'Checking out pinned VGGT commit' 'git' @('-C',$VggtRoot,'checkout','--detach',$VggtPin)
 $head = (& git -C $VggtRoot rev-parse HEAD).Trim()
 if ($head -ne $VggtPin) { throw "VGGT pin verification failed: $head" }
+
+$ModelManifest = Join-Path $OutputHost 'vggt-model.local.json'
+$modelResult = Invoke-PythonLogged 'Prefetching VGGT-1B weights (~5.03 GB; download progress is live)...' $VenvPython @(
+    '-m','refworld.runners.prefetch_vggt','--output',$ModelManifest
+) $LogPath
+if ($modelResult.Code -ne 0) {
+    throw "VGGT model prefetch failed. See $LogPath"
+}
+$ModelInfo = Get-Content $ModelManifest -Raw | ConvertFrom-Json
+$CheckpointPath = [string]$ModelInfo.snapshot_path
+if (-not (Test-Path (Join-Path $CheckpointPath 'model.safetensors') -PathType Leaf)) {
+    throw "Verified VGGT snapshot missing from local cache: $CheckpointPath"
+}
 
 $env:PYTORCH_CUDA_ALLOC_CONF = 'max_split_size_mb:128'
 
@@ -192,9 +203,10 @@ function Invoke-InferenceAttempt([int]$Size) {
     $WarpDir = Join-Path $OutputHost 'warp-only'
     New-Item -ItemType Directory -Force -Path $SourceDir,$SplatDir,$WarpDir | Out-Null
 
-    $result = Invoke-PythonLogged "Running REAL VGGT inference at ${Size}x${Size}..." $VenvPython @(
+    $result = Invoke-PythonLogged "Running REAL VGGT tensor inference at ${Size}x${Size}..." $VenvPython @(
         '-m','refworld.runners.vggt_source',
         '--vggt-root',$VggtRoot,
+        '--checkpoint',$CheckpointPath,
         '--reference',$ReferencePath,
         '--output',$SourceDir,
         '--seed','0',
