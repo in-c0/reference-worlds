@@ -124,7 +124,7 @@ The benchmark scores six axes:
 5. **Edit locality** — targeted edit vs unintended global drift.
 6. **Runtime viability** — generation time, load time, FPS, memory, portability.
 
-Full protocol: [`docs/benchmark.md`](docs/benchmark.md).
+Full protocol: [`docs/benchmark.md`](docs/benchmark.md). Dataset/license triage: [`docs/datasets.md`](docs/datasets.md).
 
 ## First experiments
 
@@ -144,12 +144,16 @@ reference-worlds/
 ├── docs/
 │   ├── architecture.md
 │   ├── benchmark.md
+│   ├── datasets.md
 │   └── landscape.md
 ├── research/
 │   └── roadmap.md
 ├── schemas/
+│   ├── report.schema.json
 │   └── world-state.schema.json
 ├── src/refworld/
+│   ├── adapters/
+│   │   └── base.py
 │   ├── __init__.py
 │   └── metrics.py
 ├── tests/
@@ -160,7 +164,7 @@ reference-worlds/
 
 ## Minimal evaluation code
 
-The initial Python package intentionally stays small. It gives us deterministic reference-image metrics and a common result shape while the heavier perceptual/geometry metrics are developed.
+The initial Python package intentionally stays small. It gives us deterministic reference-image metrics, Anchor Fidelity Curve summaries, a renderer-neutral baseline adapter seam, and common result schemas while heavier perceptual/geometry metrics are developed.
 
 ```bash
 python -m pytest
