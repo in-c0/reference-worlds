@@ -123,14 +123,15 @@ After the GPU container exits, render the source-only diagnostic from the host c
   npm install
   npx playwright install chromium
   npm run capture -- \\
-    --asset ../$REL_SPLAT/source-splat.ply \\
-    --camera ../$REL_SPLAT/source-camera.json \\
-    --out ../$REL_SPLAT/source-render.png \\
+    --asset $REL_SPLAT/source-splat.ply \\
+    --camera $REL_SPLAT/source-camera.json \\
+    --out $REL_SPLAT/source-render.png \\
     --width $WIDTH --height $HEIGHT
 
-Compare $REL_SPLAT/source-render.png against the original source **before**
-introducing any repaint model. A mismatch here implicates camera/depth/splat/
-renderer plumbing rather than hidden-view synthesis.
+The capture CLI resolves these arguments against the repository root even when
+invoked from renderer/. Compare $REL_SPLAT/source-render.png against the original
+source **before** introducing any repaint model. A mismatch here implicates
+camera/depth/splat/renderer plumbing rather than hidden-view synthesis.
 EOF
 else
   cat <<EOF
