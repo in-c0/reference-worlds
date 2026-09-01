@@ -94,7 +94,7 @@ outputs/smoke/source-01/
 
 The safe manifests contain hashes and output-relative paths. Raw VGGT confidence is preserved as a ranking score; v0 does not normalize it per image or pretend it is a calibrated probability.
 
-## 5. Render the source-only splat before adding generation
+## 5. Render and score the source-only splat before adding generation
 
 Install the pinned renderer dependencies on the host checkout:
 
@@ -117,6 +117,18 @@ npm run capture -- \
 
 `capture.mjs` intentionally resolves/serves files only under the repository root.
 
+Return to the repository root and score the exact source camera:
+
+```bash
+cd ..
+refworld-score-anchor \
+  --reference "$REF_IMAGE" \
+  --render outputs/smoke/source-01/source-splat/source-render.png \
+  --output outputs/smoke/source-01/source-splat/source-anchor-score.json
+```
+
+The score artifact records MAE, MSE and PSNR plus source/render hashes. These bootstrap metrics are a plumbing gate, not sufficient final perceptual evaluation; serious experiments should add SSIM/MS-SSIM, LPIPS/foundation features and visual inspection under a declared protocol.
+
 ### Interpretation
 
 Compare `source-render.png` against the supplied source image **before** introducing a repaint model.
@@ -133,6 +145,8 @@ If the anchor is substantially wrong here, investigate:
 Do **not** blame hidden-view synthesis yet: none has occurred.
 
 If the source-only anchor is healthy, proceed to the warp-only views. Those deliberately show disocclusion holes. That gives us the exact support a repaint backend must fill.
+
+Do not invent a universal PSNR pass threshold before seeing a small calibration set. The first purpose of this gate is differential diagnosis and regression detection.
 
 ## 6. Add any generator without changing evidence semantics
 
@@ -163,8 +177,9 @@ A successful run does **not** establish that RefWorld-0 improves novel-view fide
 The next scientific step is to run the same frozen source/held-out cameras across:
 
 1. unchanged WorldGen baseline;
-2. geometry-only RefWorld warp;
-3. unrestricted repaint;
-4. evidence-preserving repaint;
-5. canonical-world reconstruction;
-6. source-anchor optimization without held-out leakage.
+2. source-only 3DGS diagnostic;
+3. geometry-only RefWorld warp;
+4. unrestricted repaint;
+5. evidence-preserving repaint;
+6. canonical-world reconstruction;
+7. source-anchor optimization without held-out leakage.
