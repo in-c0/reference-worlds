@@ -13,7 +13,11 @@ dependencies = ["numpy>=1.26"]
 
 [project.optional-dependencies]
 camera = ["opencv-python-headless>=4.10"]
+validation = ["jsonschema>=4.23"]
 dev = ["pytest>=8", "jsonschema>=4.23", "opencv-python-headless>=4.10"]
+
+[project.scripts]
+refworld-validate-report = "refworld.cli:validate_report_main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
