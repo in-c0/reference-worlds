@@ -1,11 +1,11 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://example.invalid/reference-worlds/world-state.schema.json",
+  "$id": "https://github.com/in-c0/reference-worlds/blob/main/schemas/world-state.schema.json",
   "title": "Reference Worlds persistent world state",
   "type": "object",
   "required": ["version", "world_id", "anchors", "entities", "history"],
   "properties": {
-    "version": {"type": "string"},
+    "version": {"type": "string", "minLength": 1},
     "world_id": {"type": "string", "minLength": 1},
     "anchors": {
       "type": "array",
@@ -13,32 +13,91 @@
         "type": "object",
         "required": ["id", "observation", "camera"],
         "properties": {
-          "id": {"type": "string"},
-          "observation": {"type": "string"},
-          "camera": {
-            "type": "object",
-            "required": ["intrinsics", "extrinsics"],
-            "properties": {
-              "intrinsics": {"type": "array", "minItems": 9, "maxItems": 9, "items": {"type": "number"}},
-              "extrinsics": {"type": "array", "minItems": 16, "maxItems": 16, "items": {"type": "number"}}
-            }
-          }
-        }
+          "id": {"type": "string", "minLength": 1},
+          "observation": {"type": "string", "minLength": 1},
+          "observation_sha256": {
+            "type": ["string", "null"],
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "camera": {"$ref": "#/$defs/camera"}
+        },
+        "additionalProperties": true
       }
     },
     "entities": {
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["id", "kind", "persistence"],
+        "required": [
+          "id",
+          "kind",
+          "evidence_origin",
+          "resolution_state",
+          "commitment_state",
+          "exposure_state"
+        ],
         "properties": {
-          "id": {"type": "string"},
-          "kind": {"type": "string"},
+          "id": {"type": "string", "minLength": 1},
+          "kind": {"type": "string", "minLength": 1},
           "label": {"type": "string"},
-          "persistence": {"enum": ["observed", "resolved", "hypothesized", "unknown"]},
-          "transform": {"type": "array", "minItems": 16, "maxItems": 16, "items": {"type": "number"}},
-          "state": {"type": "object", "additionalProperties": true}
-        }
+          "evidence_origin": {
+            "description": "Epistemic origin. This must not change merely because generated content was shown or committed.",
+            "enum": ["observed", "generated", "mixed", "unknown"]
+          },
+          "resolution_state": {
+            "description": "Whether the entity/world hypothesis is still unresolved, tentative, or resolved into the current world.",
+            "enum": ["unresolved", "hypothesized", "resolved"]
+          },
+          "commitment_state": {
+            "description": "Whether current state may still be regenerated freely or must remain stable as world history.",
+            "enum": ["tentative", "committed"]
+          },
+          "exposure_state": {
+            "description": "Whether the current resolved representation has been exposed to a user/agent.",
+            "enum": ["unseen", "seen"]
+          },
+          "transform": {
+            "type": "array",
+            "minItems": 16,
+            "maxItems": 16,
+            "items": {"type": "number"}
+          },
+          "state": {"type": "object", "additionalProperties": true},
+          "provenance": {
+            "type": "object",
+            "properties": {
+              "observation_ids": {
+                "type": "array",
+                "uniqueItems": true,
+                "items": {"type": "string", "minLength": 1}
+              },
+              "proposal_ids": {
+                "type": "array",
+                "uniqueItems": true,
+                "items": {"type": "string", "minLength": 1}
+              },
+              "source_entity_ids": {
+                "type": "array",
+                "uniqueItems": true,
+                "items": {"type": "string", "minLength": 1}
+              }
+            },
+            "additionalProperties": true
+          }
+        },
+        "allOf": [
+          {
+            "if": {"properties": {"evidence_origin": {"const": "observed"}}},
+            "then": {
+              "properties": {
+                "provenance": {
+                  "required": ["observation_ids"]
+                }
+              }
+            }
+          }
+        ],
+        "additionalProperties": true
       }
     },
     "history": {
@@ -48,11 +107,36 @@
         "required": ["seq", "op"],
         "properties": {
           "seq": {"type": "integer", "minimum": 0},
-          "op": {"type": "string"},
+          "op": {"type": "string", "minLength": 1},
           "entity_id": {"type": ["string", "null"]},
+          "proposal_id": {"type": ["string", "null"]},
           "payload": {"type": "object", "additionalProperties": true}
-        }
+        },
+        "additionalProperties": true
       }
     }
-  }
+  },
+  "$defs": {
+    "camera": {
+      "type": "object",
+      "required": ["intrinsics", "extrinsics", "convention"],
+      "properties": {
+        "intrinsics": {
+          "type": "array",
+          "minItems": 9,
+          "maxItems": 9,
+          "items": {"type": "number"}
+        },
+        "extrinsics": {
+          "type": "array",
+          "minItems": 16,
+          "maxItems": 16,
+          "items": {"type": "number"}
+        },
+        "convention": {"type": "string", "minLength": 1}
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": true
 }
