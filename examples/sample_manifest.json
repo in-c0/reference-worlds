@@ -1,5 +1,5 @@
 {
-  "version": "0.1",
+  "version": "0.2",
   "world_id": "example-world",
   "anchors": [
     {
@@ -7,7 +7,8 @@
       "observation": "reference.png",
       "camera": {
         "intrinsics": [1, 0, 0, 0, 1, 0, 0, 0, 1],
-        "extrinsics": [1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1]
+        "extrinsics": [1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1],
+        "convention": "opengl-camera-to-world"
       }
     }
   ],
@@ -15,13 +16,33 @@
     {
       "id": "object-001",
       "kind": "object",
-      "label": "example persistent entity",
-      "persistence": "observed",
+      "label": "example persistent entity derived from the supplied observation",
+      "evidence_origin": "observed",
+      "resolution_state": "resolved",
+      "commitment_state": "committed",
+      "exposure_state": "seen",
       "transform": [1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1],
+      "provenance": {
+        "observation_ids": ["anchor-0"]
+      },
+      "state": {}
+    },
+    {
+      "id": "object-002",
+      "kind": "object",
+      "label": "generated hidden-space hypothesis that has not been exposed",
+      "evidence_origin": "generated",
+      "resolution_state": "hypothesized",
+      "commitment_state": "tentative",
+      "exposure_state": "unseen",
+      "transform": [1, 0, 0, 1, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1],
+      "provenance": {
+        "proposal_ids": ["view-00000000000000000000"]
+      },
       "state": {}
     }
   ],
   "history": [
-    {"seq": 0, "op": "world.created", "entity_id": null, "payload": {}}
+    {"seq": 0, "op": "world.created", "entity_id": null, "proposal_id": null, "payload": {}}
   ]
 }
