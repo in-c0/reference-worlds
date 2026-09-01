@@ -1,15 +1,18 @@
 """Minimal World Labs Marble API client used by the baseline adapter.
 
-This module intentionally covers only control-plane JSON calls. Downloading
-signed exports and rendering SPZ assets belong in separate components so API
-credentials never need to enter the renderer or benchmark report.
+This module intentionally covers the control-plane JSON calls and the documented
+media-upload handoff. Export downloading and SPZ rendering belong in separate
+components so API credentials never need to enter the renderer or benchmark
+report.
 """
 
 from __future__ import annotations
 
 import json
+import mimetypes
 import os
 import time
+from pathlib import Path
 from typing import Any, Callable, Mapping
 from urllib import error, request
 
@@ -76,6 +79,26 @@ class MarbleClient:
             raise MarbleApiError("World Labs returned an unexpected JSON payload")
         return decoded
 
+    def _generate_image_prompt(
+        self,
+        image_prompt: Mapping[str, Any],
+        *,
+        display_name: str,
+        model: str,
+        text_prompt: str | None,
+        disable_recaption: bool | None,
+    ) -> dict[str, Any]:
+        world_prompt: dict[str, Any] = {"type": "image", "image_prompt": dict(image_prompt)}
+        if text_prompt is not None:
+            world_prompt["text_prompt"] = text_prompt
+        if disable_recaption is not None:
+            world_prompt["disable_recaption"] = disable_recaption
+        return self._json(
+            "POST",
+            "/marble/v1/worlds:generate",
+            {"display_name": display_name, "model": model, "world_prompt": world_prompt},
+        )
+
     def generate_image_uri(
         self,
         image_uri: str,
@@ -87,20 +110,123 @@ class MarbleClient:
     ) -> dict[str, Any]:
         if not image_uri.startswith(("https://", "http://")):
             raise ValueError("image_uri must be an HTTP(S) URL; local files require the media upload flow")
+        return self._generate_image_prompt(
+            {"source": "uri", "uri": image_uri},
+            display_name=display_name,
+            model=model,
+            text_prompt=text_prompt,
+            disable_recaption=disable_recaption,
+        )
 
-        world_prompt: dict[str, Any] = {
-            "type": "image",
-            "image_prompt": {"source": "uri", "uri": image_uri},
-        }
-        if text_prompt is not None:
-            world_prompt["text_prompt"] = text_prompt
-        if disable_recaption is not None:
-            world_prompt["disable_recaption"] = disable_recaption
+    def generate_image_asset(
+        self,
+        media_asset_id: str,
+        *,
+        display_name: str,
+        model: str = DEFAULT_MODEL,
+        text_prompt: str | None = None,
+        disable_recaption: bool | None = None,
+    ) -> dict[str, Any]:
+        if not media_asset_id.strip():
+            raise ValueError("media_asset_id cannot be empty")
+        return self._generate_image_prompt(
+            {"source": "media_asset", "media_asset_id": media_asset_id},
+            display_name=display_name,
+            model=model,
+            text_prompt=text_prompt,
+            disable_recaption=disable_recaption,
+        )
 
+    def prepare_media_upload(
+        self,
+        file_name: str,
+        *,
+        kind: str = "image",
+        extension: str | None = None,
+        metadata: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        if kind not in {"image", "video"}:
+            raise ValueError("kind must be 'image' or 'video'")
+        if not file_name.strip():
+            raise ValueError("file_name cannot be empty")
+        suffix = Path(file_name).suffix.lstrip(".")
+        ext = (extension or suffix).lstrip(".")
+        if not ext:
+            raise ValueError("media extension cannot be empty")
         return self._json(
             "POST",
-            "/marble/v1/worlds:generate",
-            {"display_name": display_name, "model": model, "world_prompt": world_prompt},
+            "/marble/v1/media-assets:prepare_upload",
+            {
+                "file_name": file_name,
+                "kind": kind,
+                "extension": ext,
+                "metadata": dict(metadata or {}),
+            },
+        )
+
+    def upload_media_file(
+        self,
+        file_path: str | Path,
+        *,
+        kind: str = "image",
+        metadata: Mapping[str, Any] | None = None,
+    ) -> str:
+        path = Path(file_path)
+        if not path.is_file():
+            raise FileNotFoundError(path)
+
+        prepared = self.prepare_media_upload(path.name, kind=kind, metadata=metadata)
+        media_asset = prepared.get("media_asset")
+        upload_info = prepared.get("upload_info")
+        if not isinstance(media_asset, dict) or not isinstance(upload_info, dict):
+            raise MarbleApiError("prepare_upload response is missing media_asset or upload_info")
+
+        media_asset_id = media_asset.get("media_asset_id") or media_asset.get("id")
+        upload_url = upload_info.get("upload_url")
+        upload_method = str(upload_info.get("upload_method") or "PUT").upper()
+        required_headers = upload_info.get("required_headers") or {}
+        if not isinstance(media_asset_id, str) or not media_asset_id:
+            raise MarbleApiError("prepare_upload response has no media_asset_id")
+        if not isinstance(upload_url, str) or not upload_url.startswith(("https://", "http://")):
+            raise MarbleApiError("prepare_upload response has no valid upload_url")
+        if not isinstance(required_headers, dict):
+            raise MarbleApiError("prepare_upload required_headers must be an object")
+
+        content_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+        # Deliberately construct a fresh Request. Never copy API headers to a
+        # signed storage URL: signed uploads need only storage-required headers.
+        upload_req = request.Request(
+            upload_url,
+            data=path.read_bytes(),
+            method=upload_method,
+            headers={"Content-Type": content_type, **{str(k): str(v) for k, v in required_headers.items()}},
+        )
+        try:
+            with self._urlopen(upload_req) as response:
+                response.read()
+        except error.HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="replace") if hasattr(exc, "read") else ""
+            raise MarbleApiError(f"media upload HTTP {exc.code}: {detail[:500]}") from exc
+        except error.URLError as exc:
+            raise MarbleApiError(f"media upload failed: {exc.reason}") from exc
+        return media_asset_id
+
+    def generate_image_file(
+        self,
+        file_path: str | Path,
+        *,
+        display_name: str,
+        model: str = DEFAULT_MODEL,
+        text_prompt: str | None = None,
+        disable_recaption: bool | None = None,
+    ) -> dict[str, Any]:
+        media_asset_id = self.upload_media_file(file_path, kind="image")
+        return self.generate_image_asset(
+            media_asset_id,
+            display_name=display_name,
+            model=model,
+            text_prompt=text_prompt,
+            disable_recaption=disable_recaption,
         )
 
     def get_operation(self, operation_id: str) -> dict[str, Any]:
