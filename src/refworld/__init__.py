@@ -1,5 +1,11 @@
 """Small benchmark utilities for reference-anchored world synthesis."""
 
-from .metrics import anchor_metrics, psnr
+from .metrics import AnchorMetrics, CurveSummary, anchor_metrics, psnr, summarize_curve
 
-__all__ = ["anchor_metrics", "psnr"]
+__all__ = [
+    "AnchorMetrics",
+    "CurveSummary",
+    "anchor_metrics",
+    "psnr",
+    "summarize_curve",
+]
