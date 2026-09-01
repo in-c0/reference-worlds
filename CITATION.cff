@@ -1,0 +1,8 @@
+cff-version: 1.2.0
+title: Reference Worlds
+message: "If you use this research scaffold or benchmark, please cite the repository URL and version/commit you used."
+type: software
+version: 0.0.1
+date-released: 2026-09-01
+license: MIT
+repository-code: "https://github.com/in-c0/reference-worlds"
