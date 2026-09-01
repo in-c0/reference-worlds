@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "check": "node --check app.mjs && node --check capture.mjs",
+    "check": "node --check app.mjs && node --check capture.mjs && node --test test_projection.mjs",
     "capture": "node capture.mjs"
   },
   "dependencies": {
