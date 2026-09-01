@@ -28,7 +28,8 @@ import numpy as np
 
 VGGT_PIN = "a288dd0f14786c93483e45524328726ab7b1b4ce"
 VGGT_CHECKPOINT = "facebook/VGGT-1B"
-MODEL_SIZE = 518  # divisible by VGGT's 14-pixel patch size
+DEFAULT_MODEL_SIZE = 518
+PATCH_SIZE = 14
 
 
 def sha256_file(path: Path) -> str:
@@ -42,9 +43,7 @@ def sha256_file(path: Path) -> str:
 def git_head(root: Path) -> str:
     try:
         out = subprocess.check_output(
-            ["git", "-C", str(root), "rev-parse", "HEAD"],
-            text=True,
-            stderr=subprocess.STDOUT,
+            ["git", "-C", str(root), "rev-parse", "HEAD"], text=True, stderr=subprocess.STDOUT
         )
     except (OSError, subprocess.CalledProcessError) as exc:
         raise RuntimeError("cannot verify VGGT git commit") from exc
@@ -78,8 +77,6 @@ def _squeeze_single_map(value: Any, *, name: str) -> np.ndarray:
 
 
 def _original_from_square_transform(coords: np.ndarray) -> tuple[np.ndarray, int, int]:
-    """Return original->model pixel-center homography from VGGT square-loader coords."""
-
     values = np.asarray(coords, dtype=np.float64).reshape(-1)
     if values.size != 6:
         raise RuntimeError(f"expected six square-loader coordinates, got {values.size}")
@@ -92,14 +89,10 @@ def _original_from_square_transform(coords: np.ndarray) -> tuple[np.ndarray, int
     sy = (y2 - y1) / height
     if sx <= 0.0 or sy <= 0.0 or not np.isfinite([sx, sy]).all():
         raise RuntimeError("invalid VGGT preprocessing scale")
-
-    # PIL resize uses pixel-center sampling. Integer original pixel x maps to:
-    #   x_model = sx * (x + 0.5) + x1 - 0.5
     tx = x1 + 0.5 * sx - 0.5
     ty = y1 + 0.5 * sy - 0.5
     h_model_from_original = np.asarray(
-        [[sx, 0.0, tx], [0.0, sy, ty], [0.0, 0.0, 1.0]],
-        dtype=np.float64,
+        [[sx, 0.0, tx], [0.0, sy, ty], [0.0, 0.0, 1.0]], dtype=np.float64
     )
     return h_model_from_original, width, height
 
@@ -111,9 +104,7 @@ def _remap_to_original(array: np.ndarray, h_model_from_original: np.ndarray, wid
         raise RuntimeError("VGGT source runner requires OpenCV for calibrated resampling") from exc
 
     yy, xx = np.meshgrid(
-        np.arange(height, dtype=np.float32),
-        np.arange(width, dtype=np.float32),
-        indexing="ij",
+        np.arange(height, dtype=np.float32), np.arange(width, dtype=np.float32), indexing="ij"
     )
     sx = float(h_model_from_original[0, 0])
     sy = float(h_model_from_original[1, 1])
@@ -142,12 +133,22 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--reference", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument(
+        "--model-size",
+        type=int,
+        default=DEFAULT_MODEL_SIZE,
+        help="square VGGT input size; must be divisible by 14. 518 is the benchmark default; smaller values are smoke-only",
+    )
     parser.add_argument("--allow-unpinned-vggt", action="store_true")
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
+    model_size = int(args.model_size)
+    if model_size < 280 or model_size > DEFAULT_MODEL_SIZE or model_size % PATCH_SIZE != 0:
+        raise ValueError(f"--model-size must be a multiple of {PATCH_SIZE} in [280,{DEFAULT_MODEL_SIZE}]")
+
     vggt_root = args.vggt_root.resolve()
     source = args.reference.resolve()
     out = args.output.resolve()
@@ -169,8 +170,6 @@ def main() -> int:
     from vggt.models.vggt import VGGT
     from vggt.utils.load_fn import load_and_preprocess_images_square
     from vggt.utils.pose_enc import pose_encoding_to_extri_intri
-
-    # Import only after the lightweight package is available in the environment.
     from refworld.registration import opencv_w2c_to_camera
 
     if not torch.cuda.is_available():
@@ -197,9 +196,9 @@ def main() -> int:
     model = VGGT.from_pretrained(VGGT_CHECKPOINT).to(device).eval()
     model_load_seconds = time.perf_counter() - load_start
 
-    images, original_coords = load_and_preprocess_images_square([str(source)], target_size=MODEL_SIZE)
+    images, original_coords = load_and_preprocess_images_square([str(source)], target_size=model_size)
     images = images.to(device)
-    if tuple(images.shape[-2:]) != (MODEL_SIZE, MODEL_SIZE):
+    if tuple(images.shape[-2:]) != (model_size, model_size):
         raise RuntimeError(f"unexpected VGGT source tensor shape {tuple(images.shape)}")
 
     inference_start = time.perf_counter()
@@ -214,10 +213,8 @@ def main() -> int:
 
     extrinsic_cv = np.asarray(extrinsic.squeeze(0)[0].detach().float().cpu().numpy(), dtype=np.float64)
     intrinsic_model = np.asarray(intrinsic.squeeze(0)[0].detach().float().cpu().numpy(), dtype=np.float64)
-    if extrinsic_cv.shape != (3, 4):
-        raise RuntimeError(f"unexpected VGGT extrinsic shape {extrinsic_cv.shape}")
-    if intrinsic_model.shape != (3, 3):
-        raise RuntimeError(f"unexpected VGGT intrinsic shape {intrinsic_model.shape}")
+    if extrinsic_cv.shape != (3, 4) or intrinsic_model.shape != (3, 3):
+        raise RuntimeError(f"unexpected VGGT camera shapes extrinsic={extrinsic_cv.shape}, intrinsic={intrinsic_model.shape}")
 
     h_model_from_original, mapped_width, mapped_height = _original_from_square_transform(
         original_coords[0].detach().cpu().numpy()
@@ -234,34 +231,18 @@ def main() -> int:
     depth_model = _squeeze_single_map(depth_map, name="depth")
     confidence_model = _squeeze_single_map(depth_conf, name="depth confidence")
     if np.any(depth_model <= 0.0):
-        # Do not invent depth for invalid source support. Fail now so a later warp
-        # cannot silently reinterpret invalid geometry as observed evidence.
         raise RuntimeError("VGGT source depth contains non-positive values")
 
-    depth_original = _remap_to_original(
-        depth_model,
-        h_model_from_original,
-        original_width,
-        original_height,
-    )
+    depth_original = _remap_to_original(depth_model, h_model_from_original, original_width, original_height)
     confidence_original = _remap_to_original(
-        confidence_model,
-        h_model_from_original,
-        original_width,
-        original_height,
+        confidence_model, h_model_from_original, original_width, original_height
     )
-
     camera = opencv_w2c_to_camera(extrinsic_cv, intrinsic_original)
 
     depth_path = out / "depth.npy"
     confidence_path = out / "confidence-raw.npy"
     np.save(depth_path, depth_original, allow_pickle=False)
     np.save(confidence_path, confidence_original, allow_pickle=False)
-
-    artifacts = [
-        artifact_record(depth_path, out, "source-depth-npy"),
-        artifact_record(confidence_path, out, "source-confidence-raw-npy"),
-    ]
 
     manifest = {
         "version": "0.1",
@@ -294,15 +275,14 @@ def main() -> int:
         },
         "preprocessing": {
             "loader": "load_and_preprocess_images_square",
-            "model_size": MODEL_SIZE,
+            "model_size": model_size,
+            "benchmark_default_model_size": DEFAULT_MODEL_SIZE,
+            "reduced_resolution_smoke_only": model_size != DEFAULT_MODEL_SIZE,
             "model_from_original_pixel_homography": h_model_from_original.reshape(-1).tolist(),
             "intrinsics_mapped_back_to_original_pixels": True,
             "depth_confidence_mapped_back_to_original_pixels": True,
         },
-        "configuration": {
-            "seed": int(args.seed),
-            "dtype": str(dtype),
-        },
+        "configuration": {"seed": int(args.seed), "dtype": str(dtype)},
         "environment": {
             "python": platform.python_version(),
             "torch": torch.__version__,
@@ -312,15 +292,16 @@ def main() -> int:
             "peak_allocated_bytes": int(torch.cuda.max_memory_allocated()),
             "peak_reserved_bytes": int(torch.cuda.max_memory_reserved()),
         },
-        "timing": {
-            "model_load_seconds": model_load_seconds,
-            "inference_seconds": inference_seconds,
-        },
-        "artifacts": artifacts,
+        "timing": {"model_load_seconds": model_load_seconds, "inference_seconds": inference_seconds},
+        "artifacts": [
+            artifact_record(depth_path, out, "source-depth-npy"),
+            artifact_record(confidence_path, out, "source-confidence-raw-npy"),
+        ],
         "notes": [
             "No novel-view generation or crack filling occurs in this stage.",
             "Raw confidence is intentionally preserved so calibration policy is explicit and reproducible.",
             "The original supplied image remains the observation anchor; VGGT square preprocessing is inverted for camera/depth coordinates.",
+            "Any model_size below 518 is explicitly a hardware smoke configuration, not the frozen benchmark baseline.",
         ],
     }
 
