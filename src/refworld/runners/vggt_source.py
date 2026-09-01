@@ -288,8 +288,8 @@ def main() -> int:
             "upstream_extrinsic_convention": "opencv-camera-from-world",
         },
         "geometry": {
-            "depth_semantics": "VGGT model-predicted source depth; single-view scale is not assumed metric",
-            "confidence_semantics": "raw VGGT depth confidence; not normalized and not a calibrated probability",
+            "depth_semantics": "positive optical-axis Z depth in the VGGT/OpenCV source camera; single-view scale is not assumed metric",
+            "confidence_semantics": "raw VGGT depth confidence; upstream uses it as a ranking/percentile score; it is not normalized or treated as a calibrated probability",
             "confidence_calibration": None,
         },
         "preprocessing": {
