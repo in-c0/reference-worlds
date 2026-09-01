@@ -24,6 +24,22 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _portable_asset(asset: MaterializedAsset, destination: Path) -> dict[str, Any]:
+    root = destination.resolve()
+    path = Path(asset.path).resolve()
+    try:
+        relative = path.relative_to(root)
+    except ValueError as exc:
+        raise ValueError("materialized export must remain inside the experiment output directory") from exc
+    return {
+        "kind": asset.kind,
+        "tier": asset.tier,
+        "path": relative.as_posix(),
+        "sha256": asset.sha256,
+        "size_bytes": asset.size_bytes,
+    }
+
+
 def run_marble_stage1(
     reference_image: str | Path,
     output_dir: str | Path,
@@ -85,7 +101,7 @@ def run_marble_stage1(
             "operation_id": operation_id,
         },
         "world": public_world_summary(world),
-        "exports": [asset.as_dict() for asset in assets],
+        "exports": [_portable_asset(asset, destination) for asset in assets],
         "next_stage": "camera-registration-and-render-evaluation",
     }
     write_report(destination / "stage1.safe.json", manifest)
