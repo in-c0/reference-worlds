@@ -20,12 +20,11 @@ from pathlib import Path
 from typing import Any
 
 WORLDGEN_PIN = "7ce7b2767fdf31e2727b69a2e61e2e950e3a017f"
-CHECKPOINTS = {
+BASE_CHECKPOINTS = {
     "depth": "haodongli/DA-2",
     "panorama_base": "black-forest-labs/FLUX.1-Fill-dev",
     "panorama_lora_repo": "LeoXie/WorldGen",
     "panorama_lora_file": "models--WorldGen-Flux-Lora/worldgen_img2scene.safetensors",
-    "sharp_url": "https://ml-site.cdn-apple.com/models/sharp/sharp_2572gikvuh.pt",
 }
 
 
@@ -188,17 +187,32 @@ def main() -> int:
     peak_allocated = int(torch.cuda.max_memory_allocated())
     peak_reserved = int(torch.cuda.max_memory_reserved())
 
-    precision = None
-    quantized_transformer = None
+    checkpoints: dict[str, Any] = dict(BASE_CHECKPOINTS)
     if args.low_vram:
         try:
             from nunchaku.utils import get_precision
 
             precision = str(get_precision())
-            quantized_transformer = f"mit-han-lab/svdq-{precision}-flux.1-fill-dev"
+            checkpoints["nunchaku_precision"] = precision
+            checkpoints["quantized_transformer"] = (
+                f"mit-han-lab/svdq-{precision}-flux.1-fill-dev"
+            )
         except Exception:
-            precision = "unknown"
-            quantized_transformer = "mit-han-lab/svdq-<runtime-precision>-flux.1-fill-dev"
+            checkpoints["nunchaku_precision"] = "unknown"
+            checkpoints["quantized_transformer"] = (
+                "mit-han-lab/svdq-<runtime-precision>-flux.1-fill-dev"
+            )
+
+    if args.use_sharp:
+        from worldgen.pano_sharp import DEFAULT_MODEL_URL
+
+        checkpoints["sharp_model_url"] = DEFAULT_MODEL_URL
+
+    if args.inpaint_bg:
+        from worldgen.models.inpaint_model import LAMA_MODEL_MD5, LAMA_MODEL_URL
+
+        checkpoints["background_inpaint_lama_url"] = LAMA_MODEL_URL
+        checkpoints["background_inpaint_lama_md5"] = LAMA_MODEL_MD5
 
     manifest = {
         "version": "0.1",
@@ -227,11 +241,7 @@ def main() -> int:
             "return_mesh": args.return_mesh,
             "explicit_seed_patch": True,
         },
-        "checkpoints": {
-            **CHECKPOINTS,
-            "quantized_transformer": quantized_transformer,
-            "nunchaku_precision": precision,
-        },
+        "checkpoints": checkpoints,
         "environment": {
             "python": platform.python_version(),
             "torch": torch.__version__,
@@ -249,6 +259,7 @@ def main() -> int:
         "notes": [
             "Image-to-panorama logic mirrors the pinned WorldGen i2s path but exposes the panorama-fill seed explicitly.",
             "The panorama intermediate is retained so hidden-view completion can be evaluated separately from 3D reconstruction.",
+            "Checkpoint entries describe models actually activated by this configuration; external checkpoint licenses/terms remain upstream-owned.",
         ],
     }
 
