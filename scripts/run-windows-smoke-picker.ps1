@@ -33,12 +33,6 @@ Then rerun this picker from there. Recommended path:
 "@
 }
 
-$LauncherName = if ($ForceNative) { 'run-windows-native-smoke.ps1' } else { 'run-windows-smoke.ps1' }
-$Launcher = Join-Path $ScriptDir $LauncherName
-if (-not (Test-Path $Launcher -PathType Leaf)) {
-    throw "Launcher not found: $Launcher"
-}
-
 try {
     Add-Type -AssemblyName System.Windows.Forms
     [System.Windows.Forms.Application]::EnableVisualStyles()
@@ -69,6 +63,57 @@ try {
 
 Write-Host "Selected reference: $Reference" -ForegroundColor Cyan
 
+if ($ForceNative) {
+    $NativeRunner = Join-Path $ScriptDir 'run-windows-native-smoke.py'
+    if (-not (Test-Path $NativeRunner -PathType Leaf)) {
+        throw "Native Python runner not found: $NativeRunner"
+    }
+
+    $pythonExe = $null
+    $pythonPrefix = @()
+    if (Get-Command 'py' -ErrorAction SilentlyContinue) {
+        $oldPreference = $ErrorActionPreference
+        try {
+            $ErrorActionPreference = 'Continue'
+            & py -3.11 -c "import sys; assert sys.version_info[:2] == (3,11)" *> $null
+            if ($LASTEXITCODE -eq 0) {
+                $pythonExe = 'py'
+                $pythonPrefix = @('-3.11')
+            }
+        } finally {
+            $ErrorActionPreference = $oldPreference
+        }
+    }
+    if (-not $pythonExe -and (Get-Command 'python' -ErrorAction SilentlyContinue)) {
+        $pythonExe = 'python'
+    }
+    if (-not $pythonExe) {
+        throw 'Python 3.10-3.12 is required. Install Python 3.11 and rerun.'
+    }
+
+    $args = @($pythonPrefix) + @(
+        $NativeRunner,
+        '--reference',$Reference,
+        '--model-size',$ModelSize,
+        '--run-name',$RunName
+    )
+    if ($SkipTests) { $args += '--skip-tests' }
+
+    $oldPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        & $pythonExe @args
+        $code = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $oldPreference
+    }
+    exit $code
+}
+
+$Launcher = Join-Path $ScriptDir 'run-windows-smoke.ps1'
+if (-not (Test-Path $Launcher -PathType Leaf)) {
+    throw "Launcher not found: $Launcher"
+}
 $args = @(
     '-ExecutionPolicy','Bypass',
     '-File',$Launcher,
