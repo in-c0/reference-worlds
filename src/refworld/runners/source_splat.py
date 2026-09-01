@@ -68,6 +68,14 @@ def main() -> int:
     )
     ply_path = write_gaussian_ply(output / "source-splat.ply", vertices)
 
+    camera_payload = {
+        "intrinsics": [float(v) for v in geometry.camera.intrinsics],
+        "extrinsics": [float(v) for v in geometry.camera.extrinsics],
+        "convention": geometry.camera.convention,
+    }
+    camera_path = output / "source-camera.json"
+    camera_path.write_text(json.dumps(camera_payload, indent=2, sort_keys=True, allow_nan=False) + "\n")
+
     source_geometry_manifest = Path(args.source_geometry).resolve()
     if source_geometry_manifest.is_dir():
         source_geometry_manifest = source_geometry_manifest / "source-geometry.safe.json"
@@ -82,11 +90,7 @@ def main() -> int:
             "source_geometry_manifest_sha256": _sha256_file(source_geometry_manifest),
             "source_geometry_backend": geometry.backend,
         },
-        "camera": {
-            "intrinsics": list(geometry.camera.intrinsics),
-            "extrinsics": list(geometry.camera.extrinsics),
-            "convention": geometry.camera.convention,
-        },
+        "camera": camera_payload,
         "conversion": conversion,
         "representation": {
             "format": "3DGS PLY",
@@ -102,11 +106,20 @@ def main() -> int:
             "raw_source_confidence_used": False,
             "reason": "primary v0 diagnostic isolates camera/depth/export/rendering without an uncalibrated confidence transform",
         },
-        "artifact": {
-            "path": ply_path.relative_to(output).as_posix(),
-            "sha256": _sha256_file(ply_path),
-            "size_bytes": ply_path.stat().st_size,
-        },
+        "artifacts": [
+            {
+                "kind": "source-splat-ply",
+                "path": ply_path.relative_to(output).as_posix(),
+                "sha256": _sha256_file(ply_path),
+                "size_bytes": ply_path.stat().st_size,
+            },
+            {
+                "kind": "source-camera-json",
+                "path": camera_path.relative_to(output).as_posix(),
+                "sha256": _sha256_file(camera_path),
+                "size_bytes": camera_path.stat().st_size,
+            },
+        ],
     }
     manifest_path = output / "source-splat.safe.json"
     manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True, allow_nan=False) + "\n")
