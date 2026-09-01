@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/reference-worlds/world-state.schema.json",
+  "title": "Reference Worlds persistent world state",
+  "type": "object",
+  "required": ["version", "world_id", "anchors", "entities", "history"],
+  "properties": {
+    "version": {"type": "string"},
+    "world_id": {"type": "string", "minLength": 1},
+    "anchors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "observation", "camera"],
+        "properties": {
+          "id": {"type": "string"},
+          "observation": {"type": "string"},
+          "camera": {
+            "type": "object",
+            "required": ["intrinsics", "extrinsics"],
+            "properties": {
+              "intrinsics": {"type": "array", "minItems": 9, "maxItems": 9, "items": {"type": "number"}},
+              "extrinsics": {"type": "array", "minItems": 16, "maxItems": 16, "items": {"type": "number"}}
+            }
+          }
+        }
+      }
+    },
+    "entities": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "kind", "persistence"],
+        "properties": {
+          "id": {"type": "string"},
+          "kind": {"type": "string"},
+          "label": {"type": "string"},
+          "persistence": {"enum": ["observed", "resolved", "hypothesized", "unknown"]},
+          "transform": {"type": "array", "minItems": 16, "maxItems": 16, "items": {"type": "number"}},
+          "state": {"type": "object", "additionalProperties": true}
+        }
+      }
+    },
+    "history": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["seq", "op"],
+        "properties": {
+          "seq": {"type": "integer", "minimum": 0},
+          "op": {"type": "string"},
+          "entity_id": {"type": ["string", "null"]},
+          "payload": {"type": "object", "additionalProperties": true}
+        }
+      }
+    }
+  }
+}
