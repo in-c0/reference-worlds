@@ -89,6 +89,9 @@ def _original_from_square_transform(coords: np.ndarray) -> tuple[np.ndarray, int
     sy = (y2 - y1) / height
     if sx <= 0.0 or sy <= 0.0 or not np.isfinite([sx, sy]).all():
         raise RuntimeError("invalid VGGT preprocessing scale")
+    # VGGT reports continuous image-boundary coordinates after square padding and
+    # resize. Convert original integer pixel centers into model integer pixel-center
+    # coordinates using the standard half-pixel resize convention.
     tx = x1 + 0.5 * sx - 0.5
     ty = y1 + 0.5 * sy - 0.5
     h_model_from_original = np.asarray(
@@ -97,11 +100,30 @@ def _original_from_square_transform(coords: np.ndarray) -> tuple[np.ndarray, int
     return h_model_from_original, width, height
 
 
-def _remap_to_original(array: np.ndarray, h_model_from_original: np.ndarray, width: int, height: int) -> np.ndarray:
+def _remap_to_original(
+    array: np.ndarray,
+    h_model_from_original: np.ndarray,
+    width: int,
+    height: int,
+) -> np.ndarray:
+    """Resample a VGGT model-space map back to original source pixel centers.
+
+    OpenCV stores samples at integer pixel centers. A valid source pixel center can
+    map into the outer half-pixel footprint, e.g. x=-0.1 or x=W-0.9, after VGGT's
+    square resize. Linear interpolation there legitimately uses the edge sample as
+    the continuation of that pixel footprint. We therefore use BORDER_REPLICATE,
+    but only after explicitly proving every requested coordinate lies inside the
+    tensor's continuous pixel footprint [-0.5, W-0.5] x [-0.5, H-0.5]. Coordinates
+    outside that footprint remain a hard error rather than silent extrapolation.
+    """
     try:
         import cv2
     except ImportError as exc:
         raise RuntimeError("VGGT source runner requires OpenCV for calibrated resampling") from exc
+
+    source_map = np.asarray(array, dtype=np.float32)
+    if source_map.ndim != 2 or source_map.shape[0] <= 0 or source_map.shape[1] <= 0:
+        raise RuntimeError(f"expected non-empty 2D model map, got {source_map.shape}")
 
     yy, xx = np.meshgrid(
         np.arange(height, dtype=np.float32), np.arange(width, dtype=np.float32), indexing="ij"
@@ -112,18 +134,33 @@ def _remap_to_original(array: np.ndarray, h_model_from_original: np.ndarray, wid
     ty = float(h_model_from_original[1, 2])
     map_x = sx * xx + tx
     map_y = sy * yy + ty
+
+    model_h, model_w = source_map.shape
+    eps = 1e-4
+    footprint_ok = (
+        float(np.min(map_x)) >= -0.5 - eps
+        and float(np.max(map_x)) <= (model_w - 0.5) + eps
+        and float(np.min(map_y)) >= -0.5 - eps
+        and float(np.max(map_y)) <= (model_h - 0.5) + eps
+    )
+    if not footprint_ok:
+        raise RuntimeError(
+            "inverse VGGT mapping requested samples outside the model pixel footprint: "
+            f"x=[{float(np.min(map_x)):.6f},{float(np.max(map_x)):.6f}] vs [-0.5,{model_w - 0.5}], "
+            f"y=[{float(np.min(map_y)):.6f},{float(np.max(map_y)):.6f}] vs [-0.5,{model_h - 0.5}]"
+        )
+
     result = cv2.remap(
-        np.asarray(array, dtype=np.float32),
+        source_map,
         map_x,
         map_y,
         interpolation=cv2.INTER_LINEAR,
-        borderMode=cv2.BORDER_CONSTANT,
-        borderValue=float("nan"),
+        borderMode=cv2.BORDER_REPLICATE,
     )
     if result.shape != (height, width):
         raise RuntimeError(f"unexpected remapped shape {result.shape}, expected {(height, width)}")
     if not np.all(np.isfinite(result)):
-        raise RuntimeError("VGGT prediction did not cover every original source pixel after inverse preprocessing")
+        raise RuntimeError("VGGT inverse remap produced non-finite values")
     return np.asarray(result, dtype=np.float32)
 
 
@@ -296,6 +333,7 @@ def main() -> int:
             "model_from_original_pixel_homography": h_model_from_original.reshape(-1).tolist(),
             "intrinsics_mapped_back_to_original_pixels": True,
             "depth_confidence_mapped_back_to_original_pixels": True,
+            "prediction_resampling": "bilinear model-to-original; BORDER_REPLICATE permitted only inside the model tensor's outer half-pixel footprint",
         },
         "configuration": {"seed": int(args.seed), "dtype": str(dtype)},
         "environment": {
