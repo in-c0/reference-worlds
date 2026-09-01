@@ -22,7 +22,7 @@ class FakeResponse:
         return json.dumps(self.payload).encode()
 
 
-def test_generate_image_uri_uses_documented_endpoint_and_redacts_secret():
+def test_generate_image_uri_uses_documented_endpoint_seed_and_redacts_secret():
     seen = []
 
     def fake_urlopen(req):
@@ -34,12 +34,14 @@ def test_generate_image_uri_uses_documented_endpoint_and_redacts_secret():
         "https://example.com/reference.jpg",
         display_name="bench-scene",
         model="marble-1.1",
+        seed=17,
     )
     assert result["operation_id"] == "op-1"
     assert seen[0].full_url.endswith("/marble/v1/worlds:generate")
     payload = json.loads(seen[0].data)
     assert payload["world_prompt"]["type"] == "image"
     assert payload["world_prompt"]["image_prompt"]["source"] == "uri"
+    assert payload["seed"] == 17
     assert "super-secret" not in repr(client)
 
 
@@ -66,7 +68,7 @@ def test_local_upload_never_leaks_api_key_to_signed_storage(tmp_path: Path):
         raise AssertionError(req.full_url)
 
     client = MarbleClient("super-secret", urlopen=fake_urlopen)
-    result = client.generate_image_file(image, display_name="local-scene")
+    result = client.generate_image_file(image, display_name="local-scene", seed=0)
     assert result["operation_id"] == "op-1"
 
     prepare, upload, generate = seen
@@ -78,6 +80,17 @@ def test_local_upload_never_leaks_api_key_to_signed_storage(tmp_path: Path):
     generated = json.loads(generate.data)
     prompt = generated["world_prompt"]["image_prompt"]
     assert prompt == {"source": "media_asset", "media_asset_id": "asset-1"}
+    assert generated["seed"] == 0
+
+
+def test_invalid_seed_is_rejected_before_request():
+    client = MarbleClient("key", urlopen=lambda _: (_ for _ in ()).throw(AssertionError("network should not run")))
+    with pytest.raises(ValueError):
+        client.generate_image_uri("https://example.com/a.jpg", display_name="bad", seed=-1)
+    with pytest.raises(ValueError):
+        client.generate_image_uri("https://example.com/a.jpg", display_name="bad", seed=2**32)
+    with pytest.raises(TypeError):
+        client.generate_image_uri("https://example.com/a.jpg", display_name="bad", seed=True)
 
 
 def test_wait_operation_returns_completed_world():
