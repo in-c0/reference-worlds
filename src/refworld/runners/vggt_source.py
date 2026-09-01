@@ -134,6 +134,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument(
+        "--checkpoint",
+        default=VGGT_CHECKPOINT,
+        help="Hugging Face repo id or local snapshot directory. Native smoke uses a verified local snapshot.",
+    )
+    parser.add_argument(
         "--model-size",
         type=int,
         default=DEFAULT_MODEL_SIZE,
@@ -192,9 +197,17 @@ def main() -> int:
     image = Image.open(source).convert("RGB")
     original_width, original_height = image.size
 
+    checkpoint_source = str(args.checkpoint)
+    checkpoint_is_local = Path(checkpoint_source).exists()
+    print(
+        "Loading verified local VGGT weights into memory/GPU..." if checkpoint_is_local
+        else "Loading VGGT weights from Hugging Face (network may be used)...",
+        flush=True,
+    )
     load_start = time.perf_counter()
-    model = VGGT.from_pretrained(VGGT_CHECKPOINT).to(device).eval()
+    model = VGGT.from_pretrained(checkpoint_source).to(device).eval()
     model_load_seconds = time.perf_counter() - load_start
+    print(f"VGGT model loaded in {model_load_seconds:.2f}s; starting tensor inference.", flush=True)
 
     images, original_coords = load_and_preprocess_images_square([str(source)], target_size=model_size)
     images = images.to(device)
@@ -210,6 +223,7 @@ def main() -> int:
             extrinsic, intrinsic = pose_encoding_to_extri_intri(pose_enc, batched.shape[-2:])
             depth_map, depth_conf = model.depth_head(aggregated_tokens_list, batched, ps_idx)
     inference_seconds = time.perf_counter() - inference_start
+    print(f"VGGT tensor inference completed in {inference_seconds:.2f}s.", flush=True)
 
     extrinsic_cv = np.asarray(extrinsic.squeeze(0)[0].detach().float().cpu().numpy(), dtype=np.float64)
     intrinsic_model = np.asarray(intrinsic.squeeze(0)[0].detach().float().cpu().numpy(), dtype=np.float64)
@@ -254,6 +268,7 @@ def main() -> int:
             "actual_commit": head,
             "unpinned_allowed": bool(args.allow_unpinned_vggt),
             "checkpoint": VGGT_CHECKPOINT,
+            "checkpoint_load_mode": "local-prefetched" if checkpoint_is_local else "hub",
         },
         "input": {
             "file_name": source.name,
@@ -285,6 +300,7 @@ def main() -> int:
         "configuration": {"seed": int(args.seed), "dtype": str(dtype)},
         "environment": {
             "python": platform.python_version(),
+            "numpy": np.__version__,
             "torch": torch.__version__,
             "cuda_runtime": torch.version.cuda,
             "gpu_name": gpu.name,
@@ -307,7 +323,7 @@ def main() -> int:
 
     safe_path = out / "source-geometry.safe.json"
     safe_path.write_text(json.dumps(manifest, indent=2, sort_keys=True, allow_nan=False) + "\n")
-    print(safe_path)
+    print(safe_path, flush=True)
     return 0
 
 
