@@ -17,7 +17,7 @@ from typing import Any
 import numpy as np
 
 from .adapters.base import Camera
-from .camera import OPENGL_C2W
+from .camera import OPENGL_C2W, view_direction
 
 
 @dataclass(frozen=True)
@@ -100,6 +100,16 @@ def load_source_geometry(path: str | Path) -> SourceGeometry:
     )
     if camera.convention != OPENGL_C2W:
         raise ValueError(f"source geometry must use {OPENGL_C2W}")
+    # Triggers canonical extrinsic validation: homogeneous bottom row, proper
+    # orthonormal right-handed rotation and finite values.
+    view_direction(camera)
+    k = np.asarray(camera.intrinsics, dtype=np.float64).reshape(3, 3)
+    if not np.all(np.isfinite(k)) or k[0, 0] <= 0 or k[1, 1] <= 0:
+        raise ValueError("source-geometry camera intrinsics must be finite with positive focal lengths")
+    if abs(float(k[0, 1])) > 1e-8 or abs(float(k[1, 0])) > 1e-8:
+        raise ValueError("source-geometry v0 requires zero-skew intrinsics")
+    if not np.allclose(k[2], [0.0, 0.0, 1.0], atol=1e-9):
+        raise ValueError("source-geometry camera K bottom row must be [0,0,1]")
 
     artifacts = manifest.get("artifacts")
     if not isinstance(artifacts, list):
