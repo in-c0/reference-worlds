@@ -52,6 +52,39 @@ def test_remap_to_original_extracts_the_unpadded_source_region():
     np.testing.assert_allclose(restored, model_map[1:3, 1:3], atol=1e-6)
 
 
+def test_remap_to_original_accepts_valid_outer_half_pixel_footprint():
+    # A 5x5 original resized into a 4x4 model tensor maps original edge centers
+    # to -0.1 and 3.1. Those lie outside the outer sample centers [0,3] but
+    # inside the continuous pixel footprint [-0.5,3.5] and must remain valid.
+    model_map = np.arange(16, dtype=np.float32).reshape(4, 4)
+    h, width, height = _original_from_square_transform(
+        np.asarray([0.0, 0.0, 4.0, 4.0, 5.0, 5.0])
+    )
+
+    restored = _remap_to_original(model_map, h, width, height)
+
+    assert restored.shape == (5, 5)
+    assert np.all(np.isfinite(restored))
+    np.testing.assert_allclose(restored[0, 0], model_map[0, 0], atol=1e-6)
+    np.testing.assert_allclose(restored[-1, -1], model_map[-1, -1], atol=1e-6)
+
+
+def test_remap_to_original_rejects_true_extrapolation_beyond_pixel_footprint():
+    model_map = np.arange(16, dtype=np.float32).reshape(4, 4)
+    # This transform requests x=-0.75 for the first output pixel, which lies
+    # outside the valid [-0.5,3.5] footprint and must fail rather than replicate.
+    bad_h = np.asarray(
+        [[1.0, 0.0, -0.75], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]], dtype=np.float64
+    )
+
+    try:
+        _remap_to_original(model_map, bad_h, 4, 4)
+    except RuntimeError as exc:
+        assert "outside the model pixel footprint" in str(exc)
+    else:
+        raise AssertionError("expected true out-of-footprint extrapolation to be rejected")
+
+
 def test_opencv_conversion_rejects_improper_rotation():
     k = np.eye(3)
     bad = np.eye(4)
