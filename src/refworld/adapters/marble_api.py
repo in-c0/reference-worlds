@@ -26,6 +26,33 @@ class MarbleApiError(RuntimeError):
     pass
 
 
+def public_world_summary(world: Mapping[str, Any]) -> dict[str, Any]:
+    """Return a report-safe summary without prompts or signed asset URLs.
+
+    World responses can contain signed export URLs and source prompt material.
+    Benchmark metadata committed to Git should use this whitelist rather than
+    serializing the raw API response.
+    """
+
+    assets = world.get("assets")
+    assets = assets if isinstance(assets, dict) else {}
+    splats = assets.get("splats")
+    mesh = assets.get("mesh")
+    imagery = assets.get("imagery")
+    return {
+        "world_id": world.get("world_id") or world.get("id"),
+        "display_name": world.get("display_name"),
+        "model": world.get("model"),
+        "created_at": world.get("created_at"),
+        "updated_at": world.get("updated_at"),
+        "asset_capabilities": {
+            "splats": isinstance(splats, dict) and bool(splats),
+            "mesh": isinstance(mesh, dict) and bool(mesh),
+            "imagery": isinstance(imagery, dict) and bool(imagery),
+        },
+    }
+
+
 class MarbleClient:
     def __init__(
         self,
