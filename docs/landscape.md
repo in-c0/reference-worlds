@@ -1,16 +1,18 @@
 # Research landscape — September 2026
 
-This document tracks technologies directly relevant to **reference-anchored persistent world synthesis**. The goal is not to reimplement the entire world-model stack; it is to identify the gap left after current systems already generate impressive worlds.
+This document tracks technologies directly relevant to **reference-anchored persistent world synthesis**. The goal is not to reimplement the world-model stack; it is to identify a defensible gap after current systems already generate, revisit and evaluate impressive worlds.
+
+For focused benchmark/memory prior art, see [`literature.md`](literature.md).
 
 ## Frontier baseline: persistent generated worlds
 
 ### World Labs Marble
 
-Marble is the closest production baseline to this project. World Labs describes it as generating high-fidelity, persistent 3D worlds from a single image, multiple images, video, text, or coarse 3D structure. Generated worlds can be explored persistently and exported as Gaussian splats; Marble also exposes collider meshes and high-quality GLB mesh export.
+Marble is the closest production baseline to this project. World Labs describes it as generating high-fidelity, persistent 3D worlds from a single image, multiple images, video, text, or coarse 3D structure. Generated worlds can be explored persistently and exported as Gaussian splats; Marble also exposes collider meshes and high-quality mesh export.
 
-For RefWorldBench, this makes Marble the first system to falsify the project against. If Marble already preserves a source image extremely closely under controlled viewpoint perturbations, loop closure, revisits, and localized edits, then a new world-generation method may be unnecessary.
+For RefWorldBench, this makes Marble the first system to falsify the project against. If Marble already preserves a supplied observation strongly after camera registration and on calibrated held-out nearby views, while its persistent representation is sufficient for application semantics/editing, a new visual world-generation method may be unnecessary.
 
-What is not currently exposed as a standard evaluation target is an explicit **source-reference anchor constraint**: how accurately does the generated world reproduce the exact input observation, how rapidly does that agreement decay away from the recovered source camera, and does it remain stable after expansion/editing/revisit?
+The key question is not whether Marble makes an explorable world; it already does. The question is how an actual source observation behaves as a **measured anchor** after generation/export/editing and whether persistent application state can be attached without collateral visual/semantic drift.
 
 Sources:
 - https://docs.worldlabs.ai/
@@ -20,9 +22,9 @@ Sources:
 
 ### Google DeepMind Genie 3
 
-Genie 3 establishes a different frontier: real-time interactive world simulation. Google reports 20–24 FPS at 720p, with consistency over sustained interaction and recall of previously seen details.
+Genie 3 establishes a different frontier: real-time interactive visual world simulation. Its output/state model differs from an exportable explicit 3D reconstruction.
 
-Its output model is conceptually different from Marble/exportable reconstruction. RefWorldBench therefore treats Genie 3 primarily as evidence that long-horizon interactive visual consistency is achievable, while asking whether comparable systems expose a canonical, editable, addressable world state suitable for persistent applications.
+RefWorldBench therefore treats Genie-class systems as evidence that long-horizon interactive visual consistency is achievable while separately asking what can be measured about canonical/editable/addressable world state.
 
 Sources:
 - https://deepmind.google/models/genie/
@@ -32,13 +34,13 @@ Sources:
 
 ### VGGT / VGGT-Omega
 
-VGGT predicts camera parameters, point maps, depth maps, and 3D point tracks from one to many views. It is a strong candidate for recovering the source camera and obtaining a geometry prior before anchor-constrained optimization. The project page also points to VGGT-Omega as its 2026 successor.
+VGGT predicts camera parameters, point maps, depth maps, and 3D point tracks from one to many views. It is a strong candidate for recovering the source camera and obtaining a geometry prior before any anchor-constrained optimization.
 
 Source: https://github.com/facebookresearch/vggt
 
 ### Depth Anything 3
 
-Depth Anything 3 predicts spatially consistent geometry from arbitrary visual inputs, with or without known poses, using a unified depth-ray representation. It is another strong camera/geometry prior and includes a streaming mode for long sequences.
+Depth Anything 3 predicts spatially consistent geometry from arbitrary visual inputs, with or without known poses, using a unified depth-ray representation. It is another camera/geometry prior and includes streaming support for long sequences.
 
 Source: https://github.com/ByteDance-Seed/Depth-Anything-3
 
@@ -46,13 +48,13 @@ Source: https://github.com/ByteDance-Seed/Depth-Anything-3
 
 ### SAM 3D Objects
 
-SAM 3D Objects reconstructs full object geometry, texture, pose/layout from a single image and explicitly targets occlusion and clutter. It can provide entity-level candidates for a semantic overlay, though its role is object reconstruction rather than persistent whole-world synthesis.
+SAM 3D Objects reconstructs full object geometry, texture and pose/layout from a single image, including occluded/cluttered cases. It can provide entity-level candidates for a semantic overlay, though its role is object reconstruction rather than persistent whole-world synthesis.
 
 Source: https://github.com/facebookresearch/sam-3d-objects
 
 ### TRELLIS.2
 
-TRELLIS.2 is a 4B-parameter image-to-3D asset model using O-Voxel structured latents and produces high-resolution geometry with PBR surface attributes. This is relevant when persistent semantic entities need explicit editable assets rather than only radiance-field appearance.
+TRELLIS.2 is an image-to-3D asset model producing high-resolution geometry with PBR attributes. This is relevant when semantic entities need explicit editable assets rather than only radiance-field appearance.
 
 Source: https://github.com/microsoft/TRELLIS.2
 
@@ -60,33 +62,80 @@ Source: https://github.com/microsoft/TRELLIS.2
 
 ### Gaussian splats
 
-Marble exports SPZ/PLY Gaussian splats and documents integration with Spark/Three.js, Unity, Unreal, Blender, and Houdini. Splats are attractive for preserving high-frequency appearance, but they do not by themselves solve entity identity, edit locality, collision semantics, or hidden-space uncertainty.
+Marble exports SPZ/PLY Gaussian splats and documents integration with Spark/Three.js and DCC/game-engine tooling. Splats are attractive for preserving high-frequency appearance, but they do not by themselves solve semantic identity, edit locality, collision semantics or hidden-space uncertainty.
 
 ### Mesh / hybrid world representation
 
-Marble can export collider meshes and high-quality meshes. A likely RefWorld architecture is hybrid: splat/radiance appearance for visual fidelity; mesh/collider geometry for interaction; and a separate semantic world graph for stable object identity and application state.
+A likely persistent application architecture is hybrid: splat/radiance appearance for visual fidelity; mesh/collider geometry for interaction; and a separate semantic world graph for stable object identity/application state.
+
+RefWorldBench should not assume this is the only architecture. It should measure exposed capabilities rather than reward a representation by name.
 
 ## Existing evaluation work
 
 ### 4DWorldBench — CVPR 2026
 
-4DWorldBench evaluates world-generation models across perceptual quality, condition-to-4D alignment, physical realism, and 4D consistency over image/video/text-conditioned 3D/4D tasks. It is important prior art and means RefWorldBench should **not** claim to be a general world-generation benchmark.
+4DWorldBench evaluates world-generation models across perceptual quality, condition-to-4D alignment, physical realism and 4D consistency over image/video/text-conditioned 3D/4D tasks.
 
-The narrower proposed contribution is measurement of phenomena that matter specifically when a reference image should behave as a persistent hard anchor:
-
-1. exact source-view reconstruction after world generation;
-2. fidelity decay as the camera moves away from the source view;
-3. loop/revisit fidelity after long excursions;
-4. stable semantic entity identity and state;
-5. edit locality and collateral visual drift;
-6. anchor preservation after world expansion or editing.
+Therefore RefWorldBench must **not** claim to be a first/general world-generation benchmark.
 
 Source: https://openaccess.thecvf.com/content/CVPR2026/html/Lu_4DWorldBench_A_Comprehensive_Evaluation_Framework_for_3D4D_World_Generation_Models_CVPR_2026_paper.html
 
-## The remaining gap
+### WorldExam — scene revisit and 3D consistency
 
-The strongest current systems make the original question — “can one image become an explorable world?” — too broad to be useful. The more defensible question is:
+WorldExam already includes **Scene Revisit** and **3D Consistency** in a broader hierarchy spanning visual quality, control adherence, spatial consistency and world reactivity.
 
-> **Can a generated world treat a supplied observation as a measurable hard anchor while also maintaining stable geometry, appearance, entity identity, edits, and state through arbitrary navigation and revisit?**
+Source: https://arxiv.org/abs/2608.02603
 
-This repository starts benchmark-first. A new generation architecture is only justified if existing systems fail that narrower test in a meaningful, reproducible way.
+### ViewBench / ViewRope — loop closure and geometric drift
+
+ViewBench provides controlled rotate-away/return and rotation+translation loop trajectories with camera poses/depth-overlap information. The associated ViewRope method addresses long-horizon view consistency using geometry-aware attention/position encoding.
+
+Sources:
+- https://arxiv.org/abs/2602.07854
+- https://github.com/jedward225/viewbench-dataset
+
+### R2M-Bench — relative revisit memory
+
+R2M-Bench demonstrates that raw first-visit ↔ revisit similarity is confounded by generic temporal stability and failed/slow motion. It compares revisits to same-rollout controls and introduces MemoryGain and Normalized Memory Ratio.
+
+RefWorldBench should reproduce/import this logic for video/interactive revisit scoring rather than claim raw loop similarity as a contribution.
+
+Sources:
+- https://arxiv.org/abs/2608.27328
+- https://github.com/AMAP-ML/R2MBench
+
+### Closing the Loop — revisit consistency as a method
+
+Closing the Loop uses pose-matched historical latent retrieval plus geometric correspondences to improve long-horizon revisit consistency without retraining.
+
+Source: https://arxiv.org/abs/2607.21848
+
+### Ref4D-VideoBench — reference-based evaluation
+
+Ref4D-VideoBench uses reference videos for fine-grained video evaluation. This means “reference-based evaluation” itself is not a defensible novelty claim.
+
+Source: https://openaccess.thecvf.com/content/CVPR2026/html/Wei_Ref4D-VideoBench_Four-Dimensional_Reference-Based_Evaluation_of_Text-to-Video_Generative_Models_CVPR_2026_paper.html
+
+### InfiniteNature-Zero — cyclic trajectories are older prior art
+
+InfiniteNature-Zero used virtual camera trajectories including cyclic ones to train stable perpetual view generation from single-image collections.
+
+Source: https://arxiv.org/abs/2207.11148
+
+## The remaining candidate gap
+
+After the 2026 literature pass, the most defensible hypothesis is not a single isolated capability. It is a joint protocol/application requirement:
+
+> **Can a generated persistent world preserve an actual supplied observation as a calibrated visual anchor under real 3D camera displacement, while also maintaining explicit semantic identity/state and localized edits over navigation/revisit?**
+
+The candidate measurement intersection is:
+
+1. exact source-view reconstruction after independent camera registration;
+2. held-out calibrated local novel-view fidelity as camera displacement increases;
+3. R2M-style relative revisit memory rather than naive return similarity;
+4. explicit semantic entity/state persistence where available;
+5. edit locality and collateral visual/semantic drift;
+6. anchor preservation after world expansion/editing;
+7. representation/runtime portability for persistent applications.
+
+The working Anchor Fidelity Curve is a **diagnostic**, not yet a novelty claim. A method contribution is justified only if established systems fail this narrower joint test in a systematic, reproducible way.
