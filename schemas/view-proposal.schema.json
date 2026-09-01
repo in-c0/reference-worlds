@@ -1,0 +1,115 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/in-c0/reference-worlds/blob/main/schemas/view-proposal.schema.json",
+  "title": "RefWorld near-view proposal metadata",
+  "type": "object",
+  "required": [
+    "version",
+    "proposal_id",
+    "parent_observation_ids",
+    "target_camera",
+    "backends",
+    "evidence",
+    "hashes",
+    "epistemic_origin"
+  ],
+  "properties": {
+    "version": {"type": "string", "minLength": 1},
+    "proposal_id": {"type": "string", "pattern": "^view-[0-9a-f]{20}$"},
+    "parent_observation_ids": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "target_camera": {
+      "type": "object",
+      "required": ["intrinsics", "extrinsics", "convention"],
+      "properties": {
+        "intrinsics": {
+          "type": "array",
+          "minItems": 9,
+          "maxItems": 9,
+          "items": {"type": "number"}
+        },
+        "extrinsics": {
+          "type": "array",
+          "minItems": 16,
+          "maxItems": 16,
+          "items": {"type": "number"}
+        },
+        "convention": {"type": "string", "minLength": 1}
+      },
+      "additionalProperties": false
+    },
+    "backends": {
+      "type": "object",
+      "required": ["warp", "repaint", "repaint_seed"],
+      "properties": {
+        "warp": {"type": "string", "minLength": 1},
+        "repaint": {"type": "string", "minLength": 1},
+        "repaint_seed": {"type": ["integer", "null"]}
+      },
+      "additionalProperties": false
+    },
+    "evidence": {
+      "type": "object",
+      "required": [
+        "pixel_count",
+        "observed_pixels",
+        "generated_pixels",
+        "unresolved_pixels",
+        "overlap_attempt_pixels",
+        "observed_fraction",
+        "generated_fraction",
+        "unresolved_fraction"
+      ],
+      "properties": {
+        "pixel_count": {"type": "integer", "minimum": 1},
+        "observed_pixels": {"type": "integer", "minimum": 0},
+        "generated_pixels": {"type": "integer", "minimum": 0},
+        "unresolved_pixels": {"type": "integer", "minimum": 0},
+        "overlap_attempt_pixels": {"type": "integer", "minimum": 0},
+        "observed_fraction": {"type": "number", "minimum": 0, "maximum": 1},
+        "generated_fraction": {"type": "number", "minimum": 0, "maximum": 1},
+        "unresolved_fraction": {"type": "number", "minimum": 0, "maximum": 1}
+      },
+      "additionalProperties": false
+    },
+    "hashes": {
+      "type": "object",
+      "required": [
+        "proposal_image_sha256",
+        "provenance_sha256",
+        "warp_rgb_sha256",
+        "warp_observed_mask_sha256",
+        "warp_confidence_sha256",
+        "repaint_rgb_sha256",
+        "repaint_valid_mask_sha256"
+      ],
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^[0-9a-f]{64}$"
+      }
+    },
+    "backend_metadata": {
+      "type": "object",
+      "properties": {
+        "warp": {"type": "object"},
+        "repaint": {"type": "object"}
+      },
+      "additionalProperties": true
+    },
+    "epistemic_origin": {
+      "type": "object",
+      "required": ["observed", "generated", "unresolved"],
+      "properties": {
+        "observed": {"type": "string"},
+        "generated": {"type": "string"},
+        "unresolved": {"type": "string"}
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}
