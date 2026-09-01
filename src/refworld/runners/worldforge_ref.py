@@ -17,7 +17,8 @@ from typing import Any
 import numpy as np
 
 from refworld.camera import pitch_camera, yaw_camera
-from refworld.proposals import ObservationView
+from refworld.proposals import ObservationView, WarpResult, build_view_proposal
+from refworld.repaints import NoRepaintBackend
 from refworld.source_geometry import load_source_geometry
 from refworld.warps import PinholeWarpBackend
 
@@ -77,9 +78,26 @@ def main() -> int:
     camera_fn = yaw_camera if args.axis == "yaw" else pitch_camera
 
     frame_records: list[dict[str, Any]] = []
+    endpoint_target = None
+    endpoint_warp = None
     for index, degree in enumerate(np.linspace(0.0, float(args.degrees), args.frames)):
         target = camera_fn(geometry.camera, float(degree))
-        warp = warper.warp([observation], target)
+        raw_warp = warper.warp([observation], target)
+        warp = WarpResult(
+            rgb=raw_warp.rgb,
+            observed_mask=raw_warp.observed_mask,
+            confidence=raw_warp.confidence,
+            backend=raw_warp.backend,
+            metadata={
+                **dict(raw_warp.metadata),
+                "source_geometry_backend": geometry.backend,
+                "source_geometry_input_sha256": geometry.input_sha256,
+                "source_support_policy": "all-finite-positive-depth",
+                "source_raw_confidence_policy": "recorded-but-not-used-for-support-or-weighting-v0",
+                "trajectory_axis": args.axis,
+                "trajectory_degrees": float(degree),
+            },
+        )
 
         frame_path = output / f"frame_{index:04d}.png"
         mask_path = output / f"mask_{index:04d}.png"
@@ -108,6 +126,31 @@ def main() -> int:
                 },
             }
         )
+        endpoint_target = target
+        endpoint_warp = warp
+
+    if endpoint_target is None or endpoint_warp is None:
+        raise AssertionError("trajectory unexpectedly produced no endpoint")
+
+    # Persist the endpoint in the exact bundle format consumed by
+    # refworld-compose-candidate. No dummy source image or metadata conversion is
+    # needed when the external generator later returns its endpoint RGB frame.
+    endpoint_dir = output / "endpoint-warp"
+    endpoint_dir.mkdir(parents=True, exist_ok=True)
+    endpoint_repaint = NoRepaintBackend().repaint(endpoint_warp, endpoint_target, seed=None)
+    endpoint_proposal = build_view_proposal(
+        [observation], endpoint_target, endpoint_warp, endpoint_repaint, unresolved_value=0
+    )
+    endpoint_image_path = endpoint_dir / "proposal.png"
+    endpoint_provenance_path = endpoint_dir / "provenance.npy"
+    endpoint_confidence_path = endpoint_dir / "warp-confidence.npy"
+    endpoint_metadata_path = endpoint_dir / "proposal.json"
+    Image.fromarray(np.asarray(endpoint_proposal.image, dtype=np.uint8)).save(endpoint_image_path)
+    np.save(endpoint_provenance_path, endpoint_proposal.provenance, allow_pickle=False)
+    np.save(endpoint_confidence_path, endpoint_proposal.warp_confidence, allow_pickle=False)
+    endpoint_metadata_path.write_text(
+        json.dumps(endpoint_proposal.metadata_dict(), indent=2, sort_keys=True, allow_nan=False) + "\n"
+    )
 
     endpoint = frame_records[-1]
     manifest = {
@@ -136,6 +179,8 @@ def main() -> int:
         },
         "candidate_integration": {
             "expected_endpoint_frame_index": int(args.frames - 1),
+            "endpoint_warp_directory": "endpoint-warp",
+            "endpoint_warp_proposal_id": endpoint_proposal.proposal_id,
             "compose_with": "refworld-compose-candidate",
             "held_out_rgb_allowed_as_input": False,
         },
