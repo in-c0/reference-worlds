@@ -25,6 +25,7 @@ refworld-vggt-source = "refworld.runners.vggt_source:main"
 refworld-source-splat = "refworld.runners.source_splat:main"
 refworld-warp-only = "refworld.runners.warp_only:main"
 refworld-compose-candidate = "refworld.runners.compose_candidate:main"
+refworld-score-anchor = "refworld.runners.score_anchor:main"
 refworld-marble-stage1 = "refworld.cli:marble_stage1_main"
 
 [tool.setuptools.packages.find]
