@@ -2,221 +2,364 @@
 
 **R&D on reference-anchored persistent world synthesis.**
 
-> Can a system turn one reference image into a freely explorable world while treating the original image as a measurable visual anchor — and keep objects, identity, edits, and state coherent over time?
+> Can one reference image become a freely explorable world while remaining a measurable visual constraint — and can that world preserve object identity, edits, and state over time?
 
-This repository is a research scaffold and benchmark proposal, not a claim that the problem is solved or that its current metrics are novel.
+This repository is a research scaffold, benchmark and method-development workspace. It does **not** claim that the problem is solved or that its current metrics are novel.
+
+## Open-first principle
+
+The core R&D does **not** require a proprietary world-generation API.
+
+The current execution order is:
+
+```text
+EXP-000  open local baseline (WorldGen)
+   ↓
+measure exact source + held-out local views
+   ↓
+RefWorld-0: replace only the failing stage
+   ↓
+progressive completion / semantic persistence / uncertainty
+   ↓
+optional external comparison (Marble / other proprietary systems)
+```
+
+World Labs Marble remains a useful external baseline, but it is no longer infrastructure and does not gate the project.
+
+Open stack and exact upstream pins: [`docs/open-stack.md`](docs/open-stack.md).  
+Local execution path: [`docs/quickstart.md`](docs/quickstart.md).
 
 ## Why this exists
 
-Single-image world generation moved quickly in 2025–2026. Google DeepMind's Genie 3 demonstrates interactive world simulation, while World Labs' Marble generates persistent, navigable 3D worlds from images/text/video and exports splats and meshes. VGGT, Depth Anything 3, SAM 3D Objects, TRELLIS.2 and related systems make strong geometry/object pieces increasingly accessible.
+Single-image world generation moved quickly in 2025–2026. Systems now demonstrate:
 
-Evaluation has also moved quickly. 4DWorldBench, WorldExam, ViewBench, R2M-Bench and related work already evaluate broad world quality, 3D consistency, loop closure and revisit memory. Reference-based evaluation itself also has prior art such as Ref4D-VideoBench.
+- image/text → navigable persistent 3D scenes;
+- real-time interactive world simulation;
+- high-quality camera/depth/point reconstruction;
+- controlled novel-view synthesis;
+- Gaussian-splat and mesh outputs that can persist indefinitely.
 
-So the useful question is narrower than either “can we make a world from an image?” or “can we test whether it remembers revisits?”
+That means the useful research question is no longer simply:
 
-**The target here is the intersection of calibrated source-reference fidelity + persistent explicit world state + local editability.**
+> Can an image become a world?
 
-A generated world should ideally:
+The narrower target is:
 
-1. reproduce the supplied reference view extremely closely after camera registration;
-2. remain coherent as the camera moves through calibrated 3D displacements from that view;
+> **Can a generated world treat the supplied observation as durable evidence, preserve calibrated local novel views, and expose persistent explicit state that remains editable and addressable?**
+
+A strong system should ideally:
+
+1. reproduce the supplied reference view closely after honest camera registration;
+2. remain coherent at calibrated neighboring cameras;
 3. preserve revisit-specific memory beyond generic temporal stability;
-4. expose stable, addressable entities rather than only visually plausible pixels;
-5. support localized edits without unrelated world drift;
-6. persist those identities/edits across navigation, reload or snapshot/restore where supported.
+4. expose stable semantic entities rather than only similar pixels;
+5. support localized edits without unrelated visual/semantic drift;
+6. persist identities/edits across navigation, reload or snapshot/restore where supported;
+7. distinguish observed evidence from generated hidden-space hypotheses.
 
-Focused prior-art map: [`docs/literature.md`](docs/literature.md).
+Focused prior art: [`docs/literature.md`](docs/literature.md).
 
-## Working diagnostic: the Anchor Fidelity Curve
+## The root ambiguity
 
-Let `I_ref` be the reference image, `W` a generated world, and `R(W, C)` a renderer at camera `C`.
+A single image does not determine one unique hidden 3D world.
 
-At the recovered/reference camera `C0`:
+If `I_ref` is the observation and `W` a candidate world:
 
 ```text
 R(W, C0) ≈ I_ref
 ```
 
-For held-out calibrated multi-view data, evaluate similarity as the camera moves away from the input camera:
+can hold for many different worlds `W`.
+
+So RefWorld does **not** claim to recover an unknowable ground-truth backside of every object. Instead:
 
 ```text
-AFC(d) = similarity(I_gt(C_d), R(W, C_d))
+observed      → constrained by real evidence
+resolved      → generated hypothesis already exposed/committed
+hypothesized  → candidate hidden completion
+unknown       → not yet represented
 ```
 
-where `d` can be angular or metric camera displacement from `C0`.
+The research problem is to construct a coherent world that respects observed evidence while making hidden-space commitments explicit and measurable.
 
-The working **Anchor Fidelity Curve (AFC)** reports quantities such as:
+## Working diagnostic: source-anchor / displacement fidelity
 
-- source-anchor score;
-- normalized area under the displacement/fidelity curve;
-- near-anchor degradation slope;
+At recovered source camera `C0`:
+
+```text
+R(W, C0) ≈ I_ref
+```
+
+For calibrated held-out data:
+
+```text
+fidelity(d) = similarity(I_gt(C_d), R(W, C_d))
+```
+
+where `d` is the actual camera displacement from the source observation.
+
+The current code includes an **Anchor Fidelity Curve (AFC)** summary:
+
+- normalized area under the curve;
+- near-anchor slope;
 - threshold failure radius.
 
-This is currently a **diagnostic name, not a novelty claim**. Before publication we must search the novel-view/inverse-rendering literature more deeply and show that this protocol exposes failures or changes rankings beyond established metrics.
+`AFC` is a **working diagnostic name, not a novelty claim**. Real arbitrary held-out cameras are reported by actual pose separation (`view_direction_angle_deg`, camera-center distance), not mislabeled as pure yaw.
 
-For single-image-only cases, only the exact source view has direct photographic ground truth; off-anchor scores must not pretend hallucinated views are observed truth.
+For single-image-only data, only the exact source camera has photographic ground truth. Generated off-axis images are never treated as observed truth.
 
-## Working hypothesis
+## Open baseline: WorldGen
 
-A strong persistent system may be hybrid:
+The first baseline is pinned to:
+
+```text
+ZiYang-xie/WorldGen
+commit 7ce7b2767fdf31e2727b69a2e61e2e950e3a017f
+repository license: Apache-2.0
+```
+
+At that commit the image-to-scene pipeline is approximately:
 
 ```text
 reference image
-    │
-    ├─ geometry prior (VGGT / DA3 / equivalent)
-    ├─ object + semantic decomposition
-    ├─ world proposal / completion (Marble-class model or generative prior)
-    │
-    ▼
-canonical persistent world
-    ├─ geometry / collision representation
-    ├─ appearance representation (splats / radiance / PBR)
-    ├─ semantic entity graph
-    ├─ uncertainty for unseen regions
-    └─ persistent state + edit history
-    │
-    ▼
+→ single-view depth
+→ project observed pixels into a panorama
+→ generatively fill the unobserved panorama
+→ panorama depth
+→ Gaussian splat / mesh
+```
+
+Why it is useful:
+
+- modifiable code;
+- image-to-scene path;
+- 360° scene representation;
+- PLY splat and mesh outputs;
+- documented low-VRAM mode around 10 GB;
+- clear internal stages that can be ablated.
+
+Important license boundary: WorldGen's repository is Apache-2.0, but the current runnable image-to-scene path uses external checkpoints such as FLUX.1-Fill-dev and DA-2 under their own terms. Every experiment records the full checkpoint/dependency provenance.
+
+### RefWorld WorldGen runner
+
+`refworld-worldgen-run` mirrors the pinned WorldGen image-to-scene path but makes benchmark-critical state explicit:
+
+- seed is exposed instead of hidden behind the upstream `seed=42` default;
+- panorama intermediate is retained;
+- input/panorama/PLY hashes are recorded;
+- actual WorldGen commit is verified;
+- checkpoints/configuration are recorded;
+- CUDA/GPU/PyTorch metadata and peak VRAM are recorded;
+- artifacts use output-relative paths.
+
+The heavy WorldGen/CUDA environment remains separate from the lightweight benchmark package.
+
+## Candidate RefWorld-0 method
+
+Do **not** train a new foundation world model first.
+
+The first method should replace only the most likely bottleneck: **hidden/novel-view completion**.
+
+```text
+I_ref
+  │
+  ├── geometry / camera prior
+  │
+  ▼
+controlled nearby cameras
+  │
+  ├── warp observed pixels geometrically
+  ├── retain visibility/confidence masks
+  └── generatively repaint unresolved regions
+  │
+  ▼
+source + synthesized neighborhood
+  │
+  ▼
+canonical 3D reconstruction
+  │
+  ├── 3DGS / radiance appearance
+  ├── mesh / collision geometry
+  └── explicit observation provenance
+  │
+  ▼
 reference-constrained optimization
-    │
-    ▼
-interactive runtime
+```
+
+WorldForge is the first open implementation reference for the **geometry warp + diffusion repaint** component. It is not itself the persistent-world representation.
+
+The key falsification criterion is held-out multi-view performance: improving the source camera while making nearby real cameras worse is source overfitting, not progress.
+
+## Longer-term canonical world
+
+If RefWorld-0 improves the visual hypothesis, the world representation can grow into:
+
+```text
+canonical persistent world
+├── appearance representation (3DGS / radiance / PBR)
+├── geometry / collision representation
+├── stable semantic entity graph
+├── observation provenance
+├── hidden-space uncertainty state
+├── edit history
+└── snapshot / persistent application state
 ```
 
 Three principles:
 
-- **Observed regions are constraints.** The source image should not be treated as loose inspiration.
-- **Unseen regions are hypotheses.** They may be generated, but should not be confused with recovered ground truth.
-- **Observed history becomes persistent.** Once something is exposed or edited, silent identity/state drift should be measurable.
+- **Observed regions are constraints.** The source is not loose inspiration.
+- **Unseen regions are hypotheses.** Generated completion is not recovered ground truth.
+- **Observed history becomes persistent.** Once something is exposed or edited, silent drift should be measurable.
 
 ## Research questions
 
 ### RQ1 — Exact source-anchor fidelity
-How accurately can a generated world reproduce the actual input observation after generation, export, camera registration, expansion and editing?
+How accurately can a generated world reproduce the supplied observation after generation, export, registration, expansion and editing?
 
-### RQ2 — Local novel-view fidelity
-On held-out calibrated views, how quickly does fidelity degrade as the camera moves ±2°, ±5°, ±10°, ±20° or known metric distances from the anchor?
+### RQ2 — Calibrated local novel-view fidelity
+How quickly does agreement degrade at real neighboring cameras?
 
 ### RQ3 — Revisit-selective persistence
-When a camera returns, does the world preserve prior content **more than expected from generic temporal stability or failed/slow motion**? RefWorldBench should import/adapt R2M-Bench-style same-rollout relative controls rather than rely on raw return similarity.
+Does the system preserve revisited content more than expected from generic temporal stability or failed/slow motion? RefWorld imports R2M-Bench-style relative controls rather than relying on raw return-frame similarity.
 
 ### RQ4 — Semantic persistence
-Can an object have a stable ID, transform, appearance, relations, permissions/application state and edit provenance independent of the renderer?
+Can an object retain stable ID, transform, appearance, relations, application state and edit provenance independent of the renderer?
 
 ### RQ5 — Edit locality
-If one object/region is changed, can the system preserve unaffected visual and semantic state?
+Can one object/region change without unrelated visual or semantic state drifting?
 
 ### RQ6 — Uncertainty-aware completion
-Does delaying commitment on genuinely unseen space improve global coherence compared with one-shot hidden-scene hallucination?
+Does postponing commitment in genuinely unseen space improve global coherence compared with one-shot hidden-world hallucination?
 
 ## Baselines and adjacent work
 
-| Family | Candidate | What it gives us | Relevance here |
-|---|---|---|---|
-| Persistent generated world | World Labs Marble 1.1 / 1.1 Plus | Image→persistent 3D world, edit/expand, splat/mesh export | First falsification baseline for source-anchor + explicit export tests |
-| Interactive world model | Google DeepMind Genie 3 | Real-time interactive visual simulation | Frontier evidence for interactive consistency; different output/state model |
-| Revisit benchmark | R2M-Bench | Relative revisit-memory metrics with same-rollout controls | Should inform/replace naive raw loop similarity |
-| Loop-closure benchmark/method | ViewBench / ViewRope | Controlled return trajectories + geometry-aware consistency | Prior art for loop closure and geometric drift |
-| Revisit method | Closing the Loop | Historical latent retrieval + geometric correspondences | Method baseline/idea for long-horizon visual memory |
-| General benchmark | WorldExam | Scene Revisit, 3D Consistency, reactivity | Prevents overclaiming generic spatial consistency |
-| General benchmark | 4DWorldBench | Perceptual/alignment/physics/4D consistency | Prevents overclaiming general world evaluation |
-| Reference-based evaluation | Ref4D-VideoBench | Reference-conditioned video evaluation | Prevents claiming reference evaluation itself as novel |
-| Geometry | VGGT / VGGT-Omega | Cameras, depth, point maps, tracks | Camera/geometry prior |
-| Geometry | Depth Anything 3 | Spatially consistent geometry/depth/pose | Camera/geometry prior |
-| Object reconstruction | SAM 3D Objects | Object shape/texture/layout | Candidate semantic entity bootstrap |
-| Image→3D asset | TRELLIS.2 | High-fidelity PBR assets | Candidate explicit object representation |
-| Rendering | Spark / Three.js | Deterministic SPZ delivery/capture path | Benchmark renderer, not world inference |
+| Family | Candidate | Role here |
+|---|---|---|
+| Open persistent 3D baseline | WorldGen | **Primary EXP-000 baseline** and modifiable assembly reference |
+| Controlled novel-view generation | WorldForge | Reference implementation for VGGT warp + diffusion repaint |
+| Heavy open/source-available world model | HY-World 2.0 | Architecture / later comparison; not default due compute/license burden |
+| Proprietary persistent world | World Labs Marble | Optional external comparison after open baseline |
+| Interactive video world model | Google DeepMind Genie 3 | Frontier evidence for interactive consistency; different state model |
+| Revisit benchmark | R2M-Bench | Relative revisit-memory evaluation |
+| Loop closure | ViewBench / ViewRope | Controlled return trajectories / geometric consistency prior art |
+| Revisit method | Closing the Loop | Historical latent retrieval + geometry correspondence prior art |
+| General world evaluation | WorldExam / 4DWorldBench | Prevents overclaiming generic world-quality evaluation |
+| Geometry | VGGT / Depth Anything 3 | Camera / geometry priors |
+| Object reconstruction | SAM 3D Objects / TRELLIS.2 | Candidate explicit semantic-object representations |
+| Rendering | Spark / Three.js | Shared deterministic PLY/SPZ benchmark renderer |
 
-See [`docs/landscape.md`](docs/landscape.md) and [`docs/literature.md`](docs/literature.md).
+See [`docs/landscape.md`](docs/landscape.md), [`docs/literature.md`](docs/literature.md), and [`docs/open-stack.md`](docs/open-stack.md).
 
-## Proposed benchmark: RefWorldBench
+## RefWorldBench
 
-RefWorldBench is deliberately diagnostic rather than a second general “world quality” leaderboard.
+RefWorldBench is diagnostic rather than a second generic “world quality” leaderboard.
 
-Each compatible system receives one or more reference images and returns a persistent world representation or deterministic interactive endpoint.
-
-The benchmark keeps these axes separate:
+It keeps these axes separate:
 
 1. **Exact anchor fidelity** — recovered source camera.
-2. **Held-out local novel-view fidelity** — calibrated camera displacement when ground truth exists.
-3. **Revisit-selective memory** — relative revisit metrics plus explicit loop/state checks.
-4. **Semantic persistence** — stable entity identity, attributes and application state.
-5. **Edit locality** — target success vs collateral visual/semantic drift.
-6. **Runtime/portability** — generation, asset size, render performance, export/runtime support.
+2. **Held-out local novel-view fidelity** — calibrated real neighboring views.
+3. **Revisit-selective memory** — relative revisit controls + explicit state checks.
+4. **Semantic persistence** — stable identity, attributes and application state.
+5. **Edit locality** — target success vs collateral drift.
+6. **Runtime / portability** — generation time, memory, asset size, renderability/export.
 
-Full protocol: [`docs/benchmark.md`](docs/benchmark.md). Dataset/license triage: [`docs/datasets.md`](docs/datasets.md).
+Protocol: [`docs/benchmark.md`](docs/benchmark.md).  
+Dataset policy: [`docs/datasets.md`](docs/datasets.md).
 
-## First experiments
+## Frozen bootstrap data
 
-- **EXP-001 — Marble falsification baseline:** generate from one rights-cleared reference, materialize a splat/mesh, recover `C0`, render controlled perturbations, and produce source-anchor + held-out-view measurements.
-- **EXP-002 — Anchor correction:** only if EXP-001 exposes a systematic source/local-view failure, optimize camera/local appearance/geometry while regularizing held-out novel-view consistency.
-- **EXP-003 — Near-to-far completion:** compare one-shot hidden-space completion with progressive completion ordered by distance from observed evidence.
-- **EXP-004 — Semantic overlay:** attach stable entity IDs/state to a generated visual world; navigate away/revisit; edit one entity and measure collateral drift.
-- **EXP-005 — Uncertainty frontier:** retain explicit uncertainty for unseen space and commit hypotheses only as they become observed.
+The first public Type-B bootstrap uses BlendedMVS under its published CC BY 4.0 license.
 
-See [`research/roadmap.md`](research/roadmap.md).
-
-## Repository layout
+Scene selection was frozen **before** running any baseline:
 
 ```text
-reference-worlds/
-├── README.md
-├── docs/
-│   ├── architecture.md
-│   ├── benchmark.md
-│   ├── datasets.md
-│   ├── landscape.md
-│   ├── literature.md
-│   └── marble.md
-├── renderer/
-│   ├── app.mjs
-│   ├── capture.mjs
-│   ├── projection.mjs
-│   └── package.json
-├── research/
-│   └── roadmap.md
-├── schemas/
-│   ├── report.schema.json
-│   └── world-state.schema.json
-├── src/refworld/
-│   ├── adapters/
-│   ├── camera.py
-│   └── metrics.py
-├── tests/
-└── examples/
+all 7 official validation scenes in official order
++ first 3 non-validation scenes from the official master list
+= 10 scenes
 ```
+
+For each scene, the first published `pair.txt` reference becomes the single input image and its listed source views become held-out candidates.
+
+Manifest:
+
+```text
+datasets/blendedmvs-bootstrap-v0.json
+```
+
+This is a pipeline-debugging set, not yet a complete domain benchmark for futuristic reflective/biophilic architecture.
+
+## Experiments
+
+- **EXP-000 — WorldGen open baseline:** unchanged pinned local baseline, then `ml-sharp` quality variant.
+- **EXP-001 — Marble external comparison:** optional apples-to-apples comparison using the same inputs/schema.
+- **EXP-002 — RefWorld-0:** controlled warp + repaint neighboring views + canonical reconstruction + source-anchor constraint.
+- **EXP-003 — Progressive near-to-far completion:** compare one-shot vs staged hidden-space commitment.
+- **EXP-004 — Semantic persistence:** stable entity IDs/state/edit locality over leave-and-return.
+- **EXP-005 — Uncertainty frontier:** retain unresolved hidden state until evidence/interaction forces commitment.
+
+Roadmap: [`research/roadmap.md`](research/roadmap.md).
 
 ## Current executable scaffold
 
-The Python package includes deterministic source metrics, AFC summaries, canonical OpenGL camera perturbations, a renderer-neutral adapter protocol, secret-safe World Labs API/media handling, signed-export materialization with SHA-256 provenance, and public-report sanitization.
+Python:
 
-The JS renderer subproject pins Spark/Three/Playwright and separates projection math from renderer state.
+- deterministic source-image metrics;
+- curve summaries;
+- R2M-style MemoryGain / Dynamic Range / NMR primitives;
+- canonical OpenGL camera representation and perturbations;
+- OpenCV-PnP camera registration with explicit convention conversion;
+- MVSNet/BlendedMVS parser + deterministic preparation command;
+- strict JSON report writer + schema validation;
+- renderer-neutral baseline adapter protocol;
+- local WorldGen runner/adapter;
+- optional secret-safe Marble API/export adapter.
+
+Renderer:
+
+- Spark `2.1.0`;
+- Three.js `0.180.0`;
+- Playwright `1.62.1`;
+- PLY/SPZ shared asset path;
+- DPR 1;
+- antialias off;
+- explicit canonical camera payload;
+- projection math separated and unit-tested.
+
+Useful commands:
 
 ```bash
 python -m pytest
 cd renderer && npm test
+refworld-validate-report examples/synthetic-report.json
+refworld-prepare-blendedmvs /path/to/BlendedMVS
+refworld-worldgen-run --help
 ```
 
-No GitHub Actions are required; reproducibility commands are intended to run explicitly.
+The current ChatGPT execution environment is CPU-only, so heavy open model inference must run in a CUDA-capable environment. That is a **compute boundary, not an API boundary**.
 
 ## What would count as a real result?
 
 Not “it looks cool.”
 
-A useful result would be evidence such as:
+A useful result looks like:
 
-> On a rights-cleared calibrated multi-view set, system A and system B have similar exact-anchor fidelity, but one degrades substantially faster over 0–20° held-out camera displacement; relative revisit-memory scores differ after controlling for generic temporal stability; and only one preserves stable semantic/edit state after leave-and-return.
+> On the frozen calibrated set, unchanged WorldGen and RefWorld-0 have similar source scores at `C0`, but RefWorld-0 degrades more slowly across real held-out camera displacement without worsening camera-registration residual; the improvement survives repeated seeds and does not come from source-view overfitting.
 
-A useful **negative** result is equally valid: if Marble already satisfies the visual hypothesis strongly, stop building another visual world generator and narrow the project to semantic/edit persistence or benchmark tooling.
+A useful negative result is equally valid:
+
+> The open baseline already performs strongly on source/local-view fidelity; method work narrows to explicit semantics/edit persistence rather than building another visual generator.
 
 ## Key prior art / starting points
 
-- Focused literature map: [`docs/literature.md`](docs/literature.md)
+- Open stack decision: [`docs/open-stack.md`](docs/open-stack.md)
+- WorldGen: https://github.com/ZiYang-xie/WorldGen
+- WorldForge: https://github.com/Westlake-AGI-Lab/WorldForge
+- HY-World 2.0: https://github.com/Tencent-Hunyuan/HY-World-2.0
 - R2M-Bench: https://arxiv.org/abs/2608.27328
 - ViewBench / ViewRope: https://arxiv.org/abs/2602.07854
 - Closing the Loop: https://arxiv.org/abs/2607.21848
 - WorldExam: https://arxiv.org/abs/2608.02603
 - 4DWorldBench: https://openaccess.thecvf.com/content/CVPR2026/html/Lu_4DWorldBench_A_Comprehensive_Evaluation_Framework_for_3D4D_World_Generation_Models_CVPR_2026_paper.html
-- Ref4D-VideoBench: https://openaccess.thecvf.com/content/CVPR2026/html/Wei_Ref4D-VideoBench_Four-Dimensional_Reference-Based_Evaluation_of_Text-to-Video_Generative_Models_CVPR_2026_paper.html
 - World Labs Marble/API: https://docs.worldlabs.ai/
 - Google DeepMind Genie: https://deepmind.google/models/genie/
 - VGGT: https://github.com/facebookresearch/vggt
@@ -224,4 +367,4 @@ A useful **negative** result is equally valid: if Marble already satisfies the v
 
 ## License
 
-MIT for original code and documentation in this repository. External models, checkpoints, services, datasets and generated assets retain their own licenses and terms.
+MIT for original code and documentation in this repository. External repositories, model checkpoints, datasets, generated artifacts and services retain their own licenses and access terms. A permissive top-level repository license must not be assumed to cover its full dependency/checkpoint closure.
