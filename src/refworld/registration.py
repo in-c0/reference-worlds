@@ -85,6 +85,49 @@ def _opencv_w2c_to_opengl_c2w(rotation_cv: np.ndarray, translation_cv: np.ndarra
     return np.linalg.inv(w2c_gl)
 
 
+def opencv_w2c_to_camera(
+    extrinsic_w2c: Sequence[Sequence[float]],
+    intrinsics: Iterable[float] | Sequence[Sequence[float]],
+) -> Camera:
+    """Convert an OpenCV camera-from-world pose into RefWorld's canonical camera.
+
+    ``extrinsic_w2c`` may be 3x4 or homogeneous 4x4. OpenCV camera axes are
+    +X right, +Y down, +Z forward. The returned camera is right-handed OpenGL
+    camera-to-world (+X right, +Y up, -Z forward).
+    """
+
+    extrinsic = np.asarray(extrinsic_w2c, dtype=np.float64)
+    if extrinsic.shape == (3, 4):
+        w2c_cv = np.eye(4, dtype=np.float64)
+        w2c_cv[:3] = extrinsic
+    elif extrinsic.shape == (4, 4):
+        w2c_cv = extrinsic.copy()
+        if not np.allclose(w2c_cv[3], [0.0, 0.0, 0.0, 1.0], atol=1e-9):
+            raise ValueError("OpenCV homogeneous extrinsic must end with [0,0,0,1]")
+    else:
+        raise ValueError("OpenCV extrinsic must be 3x4 or 4x4")
+    if not np.all(np.isfinite(w2c_cv)):
+        raise ValueError("OpenCV extrinsic must be finite")
+
+    rotation = w2c_cv[:3, :3]
+    if not np.allclose(rotation.T @ rotation, np.eye(3), atol=1e-5):
+        raise ValueError("OpenCV extrinsic rotation must be orthonormal")
+    if not math.isclose(float(np.linalg.det(rotation)), 1.0, abs_tol=1e-5):
+        raise ValueError("OpenCV extrinsic rotation must be proper")
+
+    k = np.asarray(intrinsics, dtype=np.float64)
+    if k.size != 9:
+        raise ValueError("intrinsics must contain 9 values")
+    k = _intrinsic_matrix(k.reshape(-1))
+
+    c2w_gl = np.linalg.inv(_CV_FROM_GL_4 @ w2c_cv)
+    return Camera(
+        intrinsics=tuple(float(v) for v in k.reshape(-1)),
+        extrinsics=tuple(float(v) for v in c2w_gl.reshape(-1)),
+        convention=OPENGL_C2W,
+    )
+
+
 def recover_camera_pnp(
     world_points: Sequence[Sequence[float]],
     image_points: Sequence[Sequence[float]],
@@ -143,11 +186,9 @@ def recover_camera_pnp(
         rvec, tvec = cv2.solvePnPRefineLM(object_points, pixels, k, dist, rvec, tvec)
 
     rotation_cv, _ = cv2.Rodrigues(rvec)
-    c2w_gl = _opencv_w2c_to_opengl_c2w(rotation_cv, tvec)
-    camera = Camera(
-        intrinsics=tuple(float(v) for v in k.reshape(-1)),
-        extrinsics=tuple(float(v) for v in c2w_gl.reshape(-1)),
-        convention=OPENGL_C2W,
+    camera = opencv_w2c_to_camera(
+        np.column_stack([rotation_cv, tvec.reshape(3)]),
+        k,
     )
 
     reprojected = project_world_points(camera, object_points)
