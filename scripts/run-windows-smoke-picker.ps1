@@ -12,9 +12,10 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$Launcher = Join-Path $ScriptDir 'run-windows-smoke.ps1'
+$LauncherName = if ($ForceNative) { 'run-windows-native-smoke.ps1' } else { 'run-windows-smoke.ps1' }
+$Launcher = Join-Path $ScriptDir $LauncherName
 if (-not (Test-Path $Launcher -PathType Leaf)) {
-    throw "Main launcher not found: $Launcher"
+    throw "Launcher not found: $Launcher"
 }
 
 try {
@@ -55,7 +56,6 @@ $args = @(
     '-RunName',$RunName
 )
 if ($SkipTests) { $args += '-SkipTests' }
-if ($ForceNative) { $args += '-ForceNative' }
 
 & powershell @args
 exit $LASTEXITCODE
