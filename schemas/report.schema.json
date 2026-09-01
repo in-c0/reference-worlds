@@ -44,7 +44,9 @@
       "properties": {
         "yaw_deg": {"$ref": "#/$defs/curve"},
         "pitch_deg": {"$ref": "#/$defs/curve"},
-        "translation_m": {"$ref": "#/$defs/curve"}
+        "translation_m": {"$ref": "#/$defs/curve"},
+        "view_direction_angle_deg": {"$ref": "#/$defs/curve"},
+        "center_distance_source_units": {"$ref": "#/$defs/curve"}
       },
       "additionalProperties": true
     },
@@ -54,7 +56,9 @@
       "properties": {
         "yaw_deg": {"$ref": "#/$defs/curve"},
         "pitch_deg": {"$ref": "#/$defs/curve"},
-        "translation_m": {"$ref": "#/$defs/curve"}
+        "translation_m": {"$ref": "#/$defs/curve"},
+        "view_direction_angle_deg": {"$ref": "#/$defs/curve"},
+        "center_distance_source_units": {"$ref": "#/$defs/curve"}
       },
       "additionalProperties": true
     },
