@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from refworld.adapters.marble_api import MarbleClient
+from refworld.adapters.marble_api import MarbleClient, public_world_summary
 
 
 class FakeResponse:
@@ -98,3 +98,23 @@ def test_image_uri_rejects_local_paths():
     client = MarbleClient("key", urlopen=lambda _: FakeResponse({}))
     with pytest.raises(ValueError):
         client.generate_image_uri("reference.jpg", display_name="bad")
+
+
+def test_public_world_summary_drops_signed_urls_and_prompt_material():
+    raw = {
+        "world_id": "w-1",
+        "display_name": "scene",
+        "model": "marble-1.1",
+        "world_prompt": {"image_prompt": {"uri": "https://private.example/input.jpg"}},
+        "assets": {
+            "splats": {"spz_urls": ["https://storage.example/file.spz?secret=token"]},
+            "mesh": {"collider_mesh_url": "https://storage.example/collider.glb?secret=token"},
+        },
+    }
+    safe = public_world_summary(raw)
+    encoded = json.dumps(safe)
+    assert safe["world_id"] == "w-1"
+    assert safe["asset_capabilities"] == {"splats": True, "mesh": True, "imagery": False}
+    assert "secret=token" not in encoded
+    assert "private.example" not in encoded
+    assert "world_prompt" not in safe
