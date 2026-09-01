@@ -1,12 +1,17 @@
 # Local quickstart
 
-This is the shortest reproducible path from a clean checkout to the first real EXP-001 Marble baseline.
+This is the shortest reproducible path from a clean checkout to the first **open/local EXP-000** baseline.
+
+A proprietary world-generation API is **not required**.
 
 No GitHub Actions are required.
 
-## 1. Install
+## 1. Install RefWorldBench
 
 ```bash
+git clone https://github.com/in-c0/reference-worlds.git
+cd reference-worlds
+
 python -m venv .venv
 source .venv/bin/activate  # Windows: .venv\Scripts\activate
 pip install -e '.[dev]'
@@ -16,7 +21,7 @@ npm install
 cd ..
 ```
 
-Run local checks:
+Run lightweight checks:
 
 ```bash
 python -m pytest -q
@@ -26,13 +31,128 @@ refworld-validate-report examples/synthetic-report.json
 
 The committed synthetic report is tooling-only and is not a benchmark result.
 
-## 2. Obtain the frozen BlendedMVS bootstrap data
+## 2. Prepare a CUDA WorldGen environment
 
-Use the official BlendedMVS low-resolution v1.0.0 release described at:
+EXP-000 pins:
+
+```text
+ZiYang-xie/WorldGen
+commit 7ce7b2767fdf31e2727b69a2e61e2e950e3a017f
+```
+
+WorldGen's upstream documentation describes a low-VRAM mode around 10 GB VRAM. A CPU-only environment cannot run the baseline credibly.
+
+Create a separate environment so heavy world-generation dependencies do not contaminate the lightweight benchmark environment:
+
+```bash
+git clone --recursive https://github.com/ZiYang-xie/WorldGen.git
+cd WorldGen
+git checkout 7ce7b2767fdf31e2727b69a2e61e2e950e3a017f
+git submodule update --init --recursive
+
+conda create -n refworld-worldgen python=3.11 -y
+conda activate refworld-worldgen
+
+# Install a CUDA-enabled torch/torchvision build appropriate for the machine.
+pip install torch torchvision
+pip install .
+pip install git+https://github.com/EnVision-Research/DA-2.git#subdirectory=src --no-deps
+pip install git+https://github.com/facebookresearch/pytorch3d.git --no-build-isolation
+```
+
+Then install RefWorldBench into that same GPU environment so the explicit-seed runner is available:
+
+```bash
+cd /path/to/reference-worlds
+pip install -e .
+```
+
+### Model-access boundary
+
+WorldGen repository code is Apache-2.0, but its current image-to-scene path loads external checkpoints under their own terms, including:
+
+- `haodongli/DA-2`;
+- `black-forest-labs/FLUX.1-Fill-dev`;
+- `LeoXie/WorldGen` image-to-scene LoRA;
+- a Nunchaku quantized FLUX transformer in low-VRAM mode.
+
+Accept/login to any gated model terms required by those upstream projects. This is **model access**, not a paid world-generation API dependency.
+
+For the optional `worldgen-sharp` variant also install the pinned WorldGen `ml-sharp` submodule dependencies according to upstream instructions.
+
+## 3. Smoke-test one rights-cleared image
+
+Use a rights-cleared local image first; do not wait for the full benchmark dataset to prove the GPU path.
+
+```bash
+conda activate refworld-worldgen
+
+refworld-worldgen-run \
+  --worldgen-root /path/to/WorldGen \
+  --reference /path/to/reference.jpg \
+  --output /path/to/reference-worlds/outputs/exp000/smoke/seed-42 \
+  --seed 42 \
+  --resolution 1600 \
+  --low-vram \
+  --no-use-sharp \
+  --no-inpaint-bg \
+  --no-return-mesh
+```
+
+The runner fails closed if the WorldGen checkout is not at the pinned commit unless `--allow-unpinned-worldgen` is supplied. Do not use that override for benchmark runs.
+
+The runner intentionally preserves:
+
+```text
+run.safe.json
+panorama.png
+world-splat.ply
+```
+
+`run.safe.json` records:
+
+- input SHA-256;
+- actual + expected WorldGen commit;
+- explicit seed;
+- resolution/quality switches;
+- checkpoint identifiers;
+- Python/PyTorch/CUDA/GPU metadata;
+- model-init and generation timing;
+- peak allocated/reserved GPU memory;
+- relative artifact paths + hashes.
+
+The source prompt is not stored verbatim; only whether it was empty and its SHA-256 are recorded.
+
+### Why seed 42?
+
+At the pinned WorldGen commit, `gen_pano_fill_image` has an internal default seed of `42`, but `WorldGen.generate_world()` does not expose that seed. The RefWorld runner mirrors the same image-to-panorama logic and passes the seed explicitly. EXP-000 begins with seed 42 for every scene so the baseline corresponds to upstream default behavior without hidden randomness.
+
+If variance later matters, predeclare repeated seeds for **all** scenes rather than selectively rerunning bad results.
+
+## 4. Render the WorldGen PLY through the common benchmark renderer
+
+Spark 2.1.0 supports Gaussian-splat `.ply` as well as `.spz`, so WorldGen and Marble do not need separate visual scoring renderers.
+
+The existing `renderer/` harness is pinned to:
+
+```text
+@sparkjsdev/spark 2.1.0
+three 0.180.0
+playwright 1.62.1
+DPR 1
+antialias off
+canonical RefWorld camera payload
+```
+
+Use the resulting `world-splat.ply` as the renderer asset. The renderer must receive a canonical camera; source-camera registration remains a separate evaluation stage rather than being guessed inside the viewer.
+
+## 5. Obtain the frozen BlendedMVS bootstrap data
+
+After the one-image smoke test works, use the official **BlendedMVS low-resolution v1.0.0** release:
 
 - https://github.com/YoYo000/BlendedMVS
 
-The frozen scene selection is already committed in:
+The frozen scene selection is committed in:
 
 ```text
 datasets/blendedmvs-bootstrap-v0.json
@@ -40,7 +160,7 @@ datasets/blendedmvs-bootstrap-v0.json
 
 Do not substitute scenes based on model output quality.
 
-## 3. Prepare metadata only
+## 6. Prepare deterministic Type-B metadata
 
 Assuming the local dataset root contains the BlendedMVS scene-ID folders:
 
@@ -49,79 +169,78 @@ refworld-prepare-blendedmvs /path/to/BlendedMVS \
   --output outputs/blendedmvs-bootstrap-v0.prepared.json
 ```
 
-This command:
+This command is designed to:
 
-- verifies every required anchor/held-out image, camera and depth map;
-- selects the first `pair.txt` reference record per scene;
-- records all listed held-out source views;
-- converts camera calibration into RefWorldBench's canonical OpenGL C2W convention;
-- computes actual pose separation;
-- hashes files;
-- writes metadata only.
+- verify every required anchor/held-out image, camera and depth map;
+- select the first `pair.txt` reference record per scene;
+- record every listed held-out source view;
+- convert MVSNet/OpenCV W2C calibration into RefWorldBench's canonical OpenGL C2W convention;
+- compute actual pose separation;
+- hash files;
+- write metadata only.
 
 It does **not** copy dataset images into this repository.
 
-Inspect the prepared JSON to obtain each scene's exact anchor image/view ID.
+## 7. Run EXP-000 on the frozen scenes
 
-## 4. Configure World Labs locally
+For each scene, use exactly the anchor image selected by the prepared metadata and seed 42.
 
-Create a World Labs API key in your own secure environment and expose it only as an environment variable:
+Primary baseline:
 
-```bash
-export WORLDLABS_API_KEY='...'
+```text
+worldgen-default
+low_vram=true where needed
+use_sharp=false
+inpaint_bg=false
+return_mesh=false
+seed=42
 ```
 
-Never commit `.env`, credentials, raw World responses, or signed export URLs.
+Secondary quality baseline:
 
-## 5. Run EXP-001 stage 1 for one frozen scene
-
-Use the exact anchor image identified by the prepared metadata:
-
-```bash
-refworld-marble-stage1 \
-  /path/to/BlendedMVS/<SCENE_ID>/blended_images/<ANCHOR_ID>.jpg \
-  outputs/exp001/<SCENE_ID>/seed-0 \
-  --display-name refworld-exp001-<SCENE_ID>-seed0 \
-  --model marble-1.1 \
-  --seed 0 \
-  --spz-tier 500k
+```text
+worldgen-sharp
+same input/seed/settings except use_sharp=true
 ```
 
-EXP-001 defaults to `disable_recaption=true` so the first reference-fidelity run is not intentionally transformed through an extra recaptioning step. The stage manifest records this choice.
+Do not mix `worldgen-default` and `worldgen-sharp` results under one system name.
 
-The command will:
+## 8. Evaluation
 
-1. upload the local image using World Labs' signed media flow;
-2. submit seeded image→world generation;
-3. poll the operation until complete;
-4. materialize the requested SPZ and collider locally;
-5. compute content hashes;
-6. write `stage1.safe.json` with output-relative paths and sanitized world metadata.
+For each generated PLY:
 
-It deliberately does **not** save the raw World response.
+1. recover/refine the source camera `C0` **without changing the world**;
+2. render the exact source camera with the pinned Spark renderer;
+3. score against the actual source image;
+4. render every calibrated BlendedMVS held-out camera selected by the frozen protocol;
+5. score only against observed held-out images;
+6. report real pose separation (`view_direction_angle_deg`, `center_distance_source_units`);
+7. keep camera-registration residual separate from generation error;
+8. validate the final JSON against `schemas/report.schema.json`.
 
-## 6. Evaluation stage
+Do not call arbitrary held-out camera pairs `yaw_deg`, and do not call dataset reconstruction units meters unless physical scale has been independently established.
 
-The remaining EXP-001 evaluation path is:
+## 9. What happens after EXP-000
 
-1. recover/refine the source camera `C0` without changing world appearance;
-2. render the exported SPZ with the pinned Spark renderer;
-3. score the actual source image at `C0`;
-4. render the BlendedMVS held-out cameras;
-5. compare against the observed held-out images;
-6. report fidelity against real pose separation (`view_direction_angle_deg`, source-unit camera-center distance);
-7. validate the final report against `schemas/report.schema.json`.
+If unchanged WorldGen is already excellent near the supplied observation, narrow RefWorld-0.
 
-Do not call arbitrary held-out camera pairs `yaw_deg`, and do not call dataset reconstruction units meters unless scale has been independently established.
+If the dominant failure is hidden-view completion, the first method change is **not another whole world model**. Replace only that stage:
 
-## 7. Seed policy
+```text
+source geometry
+→ controlled nearby-view warp
+→ unresolved-region mask
+→ diffusion repaint
+→ canonical reconstruction
+→ strong source-anchor optimization
+```
 
-The initial falsification pass uses **seed 0** for every scene. This prevents scene-dependent seed cherry-picking.
+WorldForge is the first open implementation reference for the warp+repaint portion.
 
-If generation variance appears material, run a predeclared repeated-seed study such as seeds `[0, 1, 2]` for **all** selected scenes rather than selectively rerunning failures.
+See [`open-stack.md`](open-stack.md) and [`../research/roadmap.md`](../research/roadmap.md).
 
-## 8. Stop/narrow rule
+## 10. Optional external comparison: Marble
 
-EXP-001 is designed to kill unnecessary research quickly.
+World Labs Marble is retained as EXP-001 because it is a useful SOTA comparison. It is optional and does not gate the open research loop.
 
-If Marble already gives strong exact-anchor and held-out local-view fidelity after honest camera registration, do not build another image→world generator merely to have one. Narrow Reference Worlds toward the remaining measurable gaps: semantic identity/state, edit locality, persistence, or benchmark tooling.
+If/when a World Labs credential is available, use `refworld-marble-stage1` and the same frozen scenes/report schema. See [`marble.md`](marble.md).
