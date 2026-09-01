@@ -95,6 +95,8 @@ outputs/
 
 Do not treat a signed URL as a permanent artifact. Download the required export while valid, hash the bytes, and record the content hash plus non-secret provenance in the benchmark report.
 
+The World API exposes SPZ files in 100k, 500k, and full-resolution tiers plus a collider GLB. Pin the chosen tier in every benchmark report.
+
 ## 6. Deterministic rendering requirements
 
 Before comparing source/novel views, pin:
@@ -104,9 +106,12 @@ Before comparing source/novel views, pin:
 - camera convention;
 - tone mapping / color management;
 - splat quality/export tier;
-- world-to-renderer coordinate conversion.
+- world-to-renderer coordinate conversion;
+- export format/version when known.
 
-Marble export coordinates are documented using OpenCV conventions. Any conversion to OpenGL/Three.js conventions must be explicit and covered by a synthetic camera test.
+**Current Marble exports use an OpenGL coordinate system for splats and meshes.** World Labs release notes state that older generations used OpenCV coordinates, so the benchmark must record the export/model vintage and never infer convention from the product name alone. A synthetic camera/convention fixture should fail loudly if axes are flipped or handedness is wrong.
+
+This is especially important for historical exports: an AFC computed from the wrong camera convention is invalid evidence about world fidelity.
 
 ## 7. EXP-001 stopping rule
 
