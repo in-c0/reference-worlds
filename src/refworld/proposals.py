@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from typing import Any, Mapping, Protocol, Sequence, runtime_checkable
 
 import numpy as np
@@ -173,19 +173,24 @@ class RepaintBackend(Protocol):
         ...
 
 
-def build_view_proposal(
-    observations: Sequence[ObservationView],
+def build_view_proposal_from_parent_ids(
+    parent_observation_ids: Sequence[str],
     target_camera: Camera,
     warp: WarpResult,
     repaint: RepaintResult,
     *,
     unresolved_value: int | float = 0,
 ) -> ViewProposal:
-    """Compose and hash a proposal without letting repaint overwrite evidence."""
+    """Compose a proposal from persisted observation IDs and rendered artifacts.
 
-    if not observations:
-        raise ValueError("at least one real observation is required")
-    parent_ids = tuple(obs.observation_id for obs in observations)
+    This is the artifact-boundary form of ``build_view_proposal``. It allows a
+    repaint model to run in a separate GPU environment without inventing dummy
+    observation images when the real source lineage is already persisted.
+    """
+
+    parent_ids = tuple(str(value) for value in parent_observation_ids)
+    if not parent_ids or any(not value.strip() for value in parent_ids):
+        raise ValueError("at least one non-empty parent observation ID is required")
     if len(set(parent_ids)) != len(parent_ids):
         raise ValueError("parent observation IDs must be unique")
     if np.asarray(warp.rgb).shape != np.asarray(repaint.rgb).shape:
@@ -237,4 +242,25 @@ def build_view_proposal(
         summary=composition.summary.as_dict(),
         hashes=hashes,
         backend_metadata=backend_metadata,
+    )
+
+
+def build_view_proposal(
+    observations: Sequence[ObservationView],
+    target_camera: Camera,
+    warp: WarpResult,
+    repaint: RepaintResult,
+    *,
+    unresolved_value: int | float = 0,
+) -> ViewProposal:
+    """Compose and hash a proposal without letting repaint overwrite evidence."""
+
+    if not observations:
+        raise ValueError("at least one real observation is required")
+    return build_view_proposal_from_parent_ids(
+        [obs.observation_id for obs in observations],
+        target_camera,
+        warp,
+        repaint,
+        unresolved_value=unresolved_value,
     )
