@@ -59,7 +59,13 @@ class RenderFrame:
 
 @runtime_checkable
 class WorldAdapter(Protocol):
-    """Minimum seam between a world system and the neutral benchmark core."""
+    """Minimum seam between a world system and the neutral benchmark core.
+
+    Capabilities that a baseline genuinely does not expose should return
+    :class:`Unsupported`. This is different from a capability being attempted
+    and failing, and prevents export-only systems from being mis-scored as
+    renderer/semantic failures.
+    """
 
     name: str
 
@@ -77,7 +83,7 @@ class WorldAdapter(Protocol):
         world: WorldRef,
         camera: Camera,
         resolution: tuple[int, int],
-    ) -> RenderFrame:
+    ) -> RenderFrame | Unsupported:
         ...
 
     def navigate(self, world: WorldRef, path: Sequence[Camera]) -> Sequence[RenderFrame] | Unsupported:
