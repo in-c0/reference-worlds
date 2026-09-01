@@ -12,6 +12,27 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$RepoRoot = (Resolve-Path (Join-Path $ScriptDir '..')).Path
+$WindowsRoot = [IO.Path]::GetFullPath($env:WINDIR).TrimEnd('\')
+if ($RepoRoot.StartsWith($WindowsRoot + '\', [System.StringComparison]::OrdinalIgnoreCase)) {
+    $Recommended = Join-Path $env:USERPROFILE 'reference-worlds'
+    throw @"
+RefWorld is checked out under the Windows system directory:
+  $RepoRoot
+
+That location can be owned by Administrators and blocks normal-user Git/output writes.
+Do not add System32 as a global Git safe.directory exception.
+
+Clone a fresh user-owned checkout instead:
+  cd $env:USERPROFILE
+  git clone https://github.com/in-c0/reference-worlds.git
+  cd reference-worlds
+
+Then rerun this picker from there. Recommended path:
+  $Recommended
+"@
+}
+
 $LauncherName = if ($ForceNative) { 'run-windows-native-smoke.ps1' } else { 'run-windows-smoke.ps1' }
 $Launcher = Join-Path $ScriptDir $LauncherName
 if (-not (Test-Path $Launcher -PathType Leaf)) {
