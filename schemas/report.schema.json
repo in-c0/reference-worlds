@@ -39,7 +39,7 @@
       },
       "additionalProperties": true
     },
-    "afc": {
+    "held_out_displacement": {
       "type": "object",
       "properties": {
         "yaw_deg": {"$ref": "#/$defs/curve"},
@@ -48,7 +48,42 @@
       },
       "additionalProperties": true
     },
-    "loop": {"type": "object", "additionalProperties": true},
+    "afc": {
+      "description": "Deprecated v0 alias for held_out_displacement; retained for early report compatibility.",
+      "type": "object",
+      "properties": {
+        "yaw_deg": {"$ref": "#/$defs/curve"},
+        "pitch_deg": {"$ref": "#/$defs/curve"},
+        "translation_m": {"$ref": "#/$defs/curve"}
+      },
+      "additionalProperties": true
+    },
+    "revisit": {
+      "type": "object",
+      "properties": {
+        "metric": {"type": ["string", "null"]},
+        "higher_is_better": {"type": ["boolean", "null"]},
+        "raw_similarity": {"type": ["number", "null"]},
+        "revisit_mean": {"type": ["number", "null"]},
+        "baseline_mean": {"type": ["number", "null"]},
+        "short_mean": {"type": ["number", "null"]},
+        "memory_gain": {"type": ["number", "null"]},
+        "dynamic_range": {"type": ["number", "null"]},
+        "normalized_memory_ratio": {"type": ["number", "null"]},
+        "epsilon": {"type": ["number", "null"], "exclusiveMinimum": 0},
+        "per_metric": {
+          "type": "object",
+          "additionalProperties": {"$ref": "#/$defs/relativeRevisit"}
+        },
+        "explicit_state": {"type": "object", "additionalProperties": true}
+      },
+      "additionalProperties": true
+    },
+    "loop": {
+      "description": "Legacy/free-form loop field retained for early reports. Prefer revisit + explicit_state.",
+      "type": "object",
+      "additionalProperties": true
+    },
     "semantic_persistence": {"type": "object", "additionalProperties": true},
     "edit_locality": {"type": "object", "additionalProperties": true},
     "geometry": {"type": "object", "additionalProperties": true},
@@ -77,6 +112,29 @@
         "failure_threshold": {"type": ["number", "null"]}
       },
       "required": ["displacements", "similarities", "metric"],
+      "additionalProperties": true
+    },
+    "relativeRevisit": {
+      "type": "object",
+      "properties": {
+        "higher_is_better": {"type": "boolean"},
+        "revisit_mean": {"type": "number"},
+        "baseline_mean": {"type": "number"},
+        "short_mean": {"type": "number"},
+        "memory_gain": {"type": "number"},
+        "dynamic_range": {"type": "number"},
+        "normalized_memory_ratio": {"type": "number"},
+        "epsilon": {"type": "number", "exclusiveMinimum": 0}
+      },
+      "required": [
+        "higher_is_better",
+        "revisit_mean",
+        "baseline_mean",
+        "short_mean",
+        "memory_gain",
+        "dynamic_range",
+        "normalized_memory_ratio"
+      ],
       "additionalProperties": true
     }
   },
