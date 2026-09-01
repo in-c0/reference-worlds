@@ -1,0 +1,65 @@
+{
+  "version": "0.1",
+  "system": {
+    "name": "synthetic-fixture",
+    "version": "0",
+    "configuration": {
+      "purpose": "schema-and-tooling-smoke-test"
+    }
+  },
+  "sample": {
+    "id": "synthetic-scene-001",
+    "input_type": "held-out-multiview",
+    "provenance": "generated test fixture",
+    "license": "CC0-1.0"
+  },
+  "anchor": {
+    "mae": 0.0,
+    "mse": 0.0,
+    "psnr": null,
+    "ssim": 1.0,
+    "lpips": 0.0,
+    "camera_refinement": {
+      "reprojection_rmse_px": 0.0,
+      "point_count": 30
+    }
+  },
+  "held_out_displacement": {
+    "yaw_deg": {
+      "displacements": [0.0, 2.0, 5.0, 10.0],
+      "similarities": [1.0, 0.95, 0.82, 0.61],
+      "metric": "synthetic-similarity",
+      "normalized_auc": 0.789,
+      "near_anchor_slope": -0.025,
+      "failure_radius": 10.0,
+      "failure_threshold": 0.7
+    }
+  },
+  "revisit": {
+    "metric": "synthetic-similarity",
+    "higher_is_better": true,
+    "revisit_mean": 0.85,
+    "baseline_mean": 0.45,
+    "short_mean": 0.95,
+    "memory_gain": 0.4,
+    "dynamic_range": 0.5,
+    "normalized_memory_ratio": 0.8,
+    "epsilon": 1e-8,
+    "explicit_state": {
+      "supported": true,
+      "stable_entity_ids": true
+    }
+  },
+  "semantic_persistence": {},
+  "edit_locality": {},
+  "geometry": {},
+  "runtime": {
+    "generation_seconds": 0.0,
+    "asset_bytes": 0,
+    "first_interactive_seconds": 0.0,
+    "fps": null
+  },
+  "notes": [
+    "Synthetic fixture only; contains no benchmark result."
+  ]
+}
