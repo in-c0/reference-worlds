@@ -26,19 +26,35 @@ class AnchorMetrics:
 
 @dataclass(frozen=True)
 class CurveSummary:
-    """Summary of a similarity-vs-displacement curve.
-
-    Similarity is assumed to be higher-is-better. ``normalized_auc`` divides
-    trapezoidal area by the displacement span, so it stays in the same units as
-    the similarity score. ``near_anchor_slope`` is the slope between the first
-    two samples. ``failure_radius`` is the first sampled displacement whose
-    score falls strictly below the requested threshold, or infinity if no
-    failure is observed within the sampled range.
-    """
+    """Summary of a similarity-vs-displacement curve."""
 
     normalized_auc: float
     near_anchor_slope: float
     failure_radius: float
+
+    def as_dict(self) -> dict[str, float]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class RelativeRevisitSummary:
+    """R2M-style relative revisit consistency summary for one oriented metric.
+
+    The equations follow R2M-Bench:
+      MG = mean(revisit) - mean(baseline)
+      DR = mean(short) - mean(baseline)
+      NMR = MG / (DR + epsilon)
+
+    Inputs are oriented internally so higher always means stronger consistency.
+    No clipping is applied to NMR.
+    """
+
+    revisit_mean: float
+    baseline_mean: float
+    short_mean: float
+    memory_gain: float
+    dynamic_range: float
+    normalized_memory_ratio: float
 
     def as_dict(self) -> dict[str, float]:
         return asdict(self)
@@ -87,7 +103,7 @@ def summarize_curve(
 ) -> CurveSummary:
     """Summarize an Anchor Fidelity Curve or another monotonic-axis curve.
 
-    The function does not assume the scores are monotonic; non-monotonicity is
+    The function does not assume scores are monotonic; non-monotonicity is
     itself useful evidence. Displacements must be finite, unique, non-negative,
     and strictly increasing. Similarities must be finite. At least two samples
     are required.
@@ -125,4 +141,63 @@ def summarize_curve(
         normalized_auc=normalized_auc,
         near_anchor_slope=near_anchor_slope,
         failure_radius=failure_radius,
+    )
+
+
+def summarize_relative_revisit(
+    revisit_scores: Iterable[float],
+    baseline_scores: Iterable[float],
+    short_range_scores: Iterable[float],
+    *,
+    higher_is_better: bool = True,
+    epsilon: float = 1e-8,
+) -> RelativeRevisitSummary:
+    """Compute R2M-Bench MG/DR/NMR for one pairwise consistency measure.
+
+    R2M first orients a metric so larger values always mean stronger consistency.
+    It then computes mean revisit, gap-matched baseline, and short-range scores:
+
+      MG = revisit - baseline
+      DR = short - baseline
+      NMR = MG / (DR + epsilon)
+
+    This helper intentionally does not clip NMR; values below 0 or above 1 are
+    meaningful diagnostics. Pair mining/trajectory balancing are separate steps.
+    """
+
+    if not isinstance(higher_is_better, bool):
+        raise TypeError("higher_is_better must be bool")
+    if not math.isfinite(epsilon) or epsilon <= 0.0:
+        raise ValueError("epsilon must be a positive finite number")
+
+    groups = []
+    for name, values in (
+        ("revisit_scores", revisit_scores),
+        ("baseline_scores", baseline_scores),
+        ("short_range_scores", short_range_scores),
+    ):
+        arr = np.asarray(tuple(values), dtype=np.float64)
+        if arr.ndim != 1 or arr.size == 0:
+            raise ValueError(f"{name} must be a non-empty 1D sequence")
+        if not np.all(np.isfinite(arr)):
+            raise ValueError(f"{name} must contain only finite values")
+        if not higher_is_better:
+            arr = -arr
+        groups.append(arr)
+
+    revisit, baseline, short_range = groups
+    revisit_mean = float(np.mean(revisit))
+    baseline_mean = float(np.mean(baseline))
+    short_mean = float(np.mean(short_range))
+    memory_gain = revisit_mean - baseline_mean
+    dynamic_range = short_mean - baseline_mean
+    normalized_memory_ratio = memory_gain / (dynamic_range + epsilon)
+
+    return RelativeRevisitSummary(
+        revisit_mean=revisit_mean,
+        baseline_mean=baseline_mean,
+        short_mean=short_mean,
+        memory_gain=memory_gain,
+        dynamic_range=dynamic_range,
+        normalized_memory_ratio=normalized_memory_ratio,
     )
