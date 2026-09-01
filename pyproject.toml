@@ -12,7 +12,8 @@ license = {text = "MIT"}
 dependencies = ["numpy>=1.26"]
 
 [project.optional-dependencies]
-dev = ["pytest>=8"]
+camera = ["opencv-python-headless>=4.10"]
+dev = ["pytest>=8", "jsonschema>=4.23", "opencv-python-headless>=4.10"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
