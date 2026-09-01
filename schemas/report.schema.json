@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/in-c0/reference-worlds/blob/main/schemas/report.schema.json",
+  "title": "RefWorldBench report",
+  "type": "object",
+  "required": ["version", "system", "sample", "anchor", "runtime"],
+  "properties": {
+    "version": {"type": "string"},
+    "system": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "version": {"type": ["string", "null"]},
+        "configuration": {"type": "object", "additionalProperties": true}
+      },
+      "additionalProperties": true
+    },
+    "sample": {
+      "type": "object",
+      "required": ["id", "input_type"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "input_type": {"enum": ["single-image", "held-out-multiview", "video-360"]},
+        "provenance": {"type": ["string", "null"]},
+        "license": {"type": ["string", "null"]}
+      },
+      "additionalProperties": true
+    },
+    "anchor": {
+      "type": "object",
+      "properties": {
+        "mae": {"type": "number"},
+        "mse": {"type": "number"},
+        "psnr": {"type": ["number", "null"]},
+        "ssim": {"type": ["number", "null"]},
+        "lpips": {"type": ["number", "null"]},
+        "camera_refinement": {"type": "object", "additionalProperties": true}
+      },
+      "additionalProperties": true
+    },
+    "afc": {
+      "type": "object",
+      "properties": {
+        "yaw_deg": {"$ref": "#/$defs/curve"},
+        "pitch_deg": {"$ref": "#/$defs/curve"},
+        "translation_m": {"$ref": "#/$defs/curve"}
+      },
+      "additionalProperties": true
+    },
+    "loop": {"type": "object", "additionalProperties": true},
+    "semantic_persistence": {"type": "object", "additionalProperties": true},
+    "edit_locality": {"type": "object", "additionalProperties": true},
+    "geometry": {"type": "object", "additionalProperties": true},
+    "runtime": {
+      "type": "object",
+      "properties": {
+        "generation_seconds": {"type": ["number", "null"], "minimum": 0},
+        "asset_bytes": {"type": ["integer", "null"], "minimum": 0},
+        "first_interactive_seconds": {"type": ["number", "null"], "minimum": 0},
+        "fps": {"type": ["number", "null"], "minimum": 0}
+      },
+      "additionalProperties": true
+    },
+    "notes": {"type": "array", "items": {"type": "string"}}
+  },
+  "$defs": {
+    "curve": {
+      "type": "object",
+      "properties": {
+        "displacements": {"type": "array", "items": {"type": "number"}, "minItems": 2},
+        "similarities": {"type": "array", "items": {"type": "number"}, "minItems": 2},
+        "metric": {"type": "string"},
+        "normalized_auc": {"type": ["number", "null"]},
+        "near_anchor_slope": {"type": ["number", "null"]},
+        "failure_radius": {"type": ["number", "null"]},
+        "failure_threshold": {"type": ["number", "null"]}
+      },
+      "required": ["displacements", "similarities", "metric"],
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}
