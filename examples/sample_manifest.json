@@ -1,0 +1,27 @@
+{
+  "version": "0.1",
+  "world_id": "example-world",
+  "anchors": [
+    {
+      "id": "anchor-0",
+      "observation": "reference.png",
+      "camera": {
+        "intrinsics": [1, 0, 0, 0, 1, 0, 0, 0, 1],
+        "extrinsics": [1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1]
+      }
+    }
+  ],
+  "entities": [
+    {
+      "id": "object-001",
+      "kind": "object",
+      "label": "example persistent entity",
+      "persistence": "observed",
+      "transform": [1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1],
+      "state": {}
+    }
+  ],
+  "history": [
+    {"seq": 0, "op": "world.created", "entity_id": null, "payload": {}}
+  ]
+}
