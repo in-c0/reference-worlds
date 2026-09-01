@@ -20,6 +20,7 @@ from urllib import error, request
 DEFAULT_BASE_URL = "https://api.worldlabs.ai"
 DEFAULT_MODEL = "marble-1.1"
 API_KEY_ENV = "WORLDLABS_API_KEY"
+MAX_SEED = 2**32 - 1
 
 
 class MarbleApiError(RuntimeError):
@@ -27,12 +28,7 @@ class MarbleApiError(RuntimeError):
 
 
 def public_world_summary(world: Mapping[str, Any]) -> dict[str, Any]:
-    """Return a report-safe summary without prompts or signed asset URLs.
-
-    World responses can contain signed export URLs and source prompt material.
-    Benchmark metadata committed to Git should use this whitelist rather than
-    serializing the raw API response.
-    """
+    """Return a report-safe summary without prompts or signed asset URLs."""
 
     assets = world.get("assets")
     assets = assets if isinstance(assets, dict) else {}
@@ -51,6 +47,16 @@ def public_world_summary(world: Mapping[str, Any]) -> dict[str, Any]:
             "imagery": isinstance(imagery, dict) and bool(imagery),
         },
     }
+
+
+def _validated_seed(seed: int | None) -> int | None:
+    if seed is None:
+        return None
+    if isinstance(seed, bool) or not isinstance(seed, int):
+        raise TypeError("seed must be an integer or None")
+    if seed < 0 or seed > MAX_SEED:
+        raise ValueError(f"seed must satisfy 0 <= seed <= {MAX_SEED}")
+    return seed
 
 
 class MarbleClient:
@@ -114,17 +120,23 @@ class MarbleClient:
         model: str,
         text_prompt: str | None,
         disable_recaption: bool | None,
+        seed: int | None,
     ) -> dict[str, Any]:
         world_prompt: dict[str, Any] = {"type": "image", "image_prompt": dict(image_prompt)}
         if text_prompt is not None:
             world_prompt["text_prompt"] = text_prompt
         if disable_recaption is not None:
             world_prompt["disable_recaption"] = disable_recaption
-        return self._json(
-            "POST",
-            "/marble/v1/worlds:generate",
-            {"display_name": display_name, "model": model, "world_prompt": world_prompt},
-        )
+
+        payload: dict[str, Any] = {
+            "display_name": display_name,
+            "model": model,
+            "world_prompt": world_prompt,
+        }
+        seed = _validated_seed(seed)
+        if seed is not None:
+            payload["seed"] = seed
+        return self._json("POST", "/marble/v1/worlds:generate", payload)
 
     def generate_image_uri(
         self,
@@ -134,6 +146,7 @@ class MarbleClient:
         model: str = DEFAULT_MODEL,
         text_prompt: str | None = None,
         disable_recaption: bool | None = None,
+        seed: int | None = None,
     ) -> dict[str, Any]:
         if not image_uri.startswith(("https://", "http://")):
             raise ValueError("image_uri must be an HTTP(S) URL; local files require the media upload flow")
@@ -143,6 +156,7 @@ class MarbleClient:
             model=model,
             text_prompt=text_prompt,
             disable_recaption=disable_recaption,
+            seed=seed,
         )
 
     def generate_image_asset(
@@ -153,6 +167,7 @@ class MarbleClient:
         model: str = DEFAULT_MODEL,
         text_prompt: str | None = None,
         disable_recaption: bool | None = None,
+        seed: int | None = None,
     ) -> dict[str, Any]:
         if not media_asset_id.strip():
             raise ValueError("media_asset_id cannot be empty")
@@ -162,6 +177,7 @@ class MarbleClient:
             model=model,
             text_prompt=text_prompt,
             disable_recaption=disable_recaption,
+            seed=seed,
         )
 
     def prepare_media_upload(
@@ -220,8 +236,6 @@ class MarbleClient:
             raise MarbleApiError("prepare_upload required_headers must be an object")
 
         content_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
-        # Deliberately construct a fresh Request. Never copy API headers to a
-        # signed storage URL: signed uploads need only storage-required headers.
         upload_req = request.Request(
             upload_url,
             data=path.read_bytes(),
@@ -246,6 +260,7 @@ class MarbleClient:
         model: str = DEFAULT_MODEL,
         text_prompt: str | None = None,
         disable_recaption: bool | None = None,
+        seed: int | None = None,
     ) -> dict[str, Any]:
         media_asset_id = self.upload_media_file(file_path, kind="image")
         return self.generate_image_asset(
@@ -254,6 +269,7 @@ class MarbleClient:
             model=model,
             text_prompt=text_prompt,
             disable_recaption=disable_recaption,
+            seed=seed,
         )
 
     def get_operation(self, operation_id: str) -> dict[str, Any]:
