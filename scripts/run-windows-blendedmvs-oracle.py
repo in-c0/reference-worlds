@@ -2,7 +2,7 @@
 """Run the first calibrated BlendedMVS oracle-geometry B-vs-C experiment on Windows.
 
 Pipeline:
-  offline dataset-reader contract tests
+  offline dataset-reader + camera-import contract tests
   -> selective official split-ZIP materialization (first frozen scene only)
   -> first pair record / first held-out view
   -> oracle anchor-depth calibrated warp (held-out RGB still sealed)
@@ -70,7 +70,7 @@ def main() -> int:
     )
 
     run_checked(
-        "Running offline split-ZIP/PFM contract tests",
+        "Running offline split-ZIP/PFM/camera-import contract tests",
         [
             str(python),
             "-m",
@@ -78,6 +78,7 @@ def main() -> int:
             "-q",
             "tests/test_remote_zip.py",
             "tests/test_pfm.py",
+            "tests/test_mvsnet_dataset.py",
         ],
         cwd=repo_root,
     )
