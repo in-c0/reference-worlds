@@ -4,6 +4,13 @@ MVSNet camera files store an extrinsic ``E=[R|t]`` in the convention used by
 its COLMAP converter: world-to-camera with OpenCV camera axes (+X right,
 +Y down, +Z forward). RefWorldBench converts this explicitly to its canonical
 right-handed OpenGL camera-to-world convention (+X right, +Y up, -Z forward).
+
+Published camera matrices are text calibrations and can contain small rounding
+errors. Once a source rotation has passed the dataset-level near-rotation checks,
+we project it to the nearest proper SO(3) matrix before constructing a canonical
+camera. This prevents a calibration that is valid to the source precision from
+later failing RefWorld's stricter canonical rotation invariant. The correction
+magnitude is retained as metadata for auditability.
 """
 
 from __future__ import annotations
@@ -35,6 +42,7 @@ class MVSNetCamera:
     depth_num: float | None = None
     depth_max: float | None = None
     source_convention: str = "opencv-world-to-camera"
+    rotation_orthonormalization_frobenius: float = 0.0
 
 
 def parse_pair_text(text: str) -> tuple[PairRecord, ...]:
@@ -113,6 +121,21 @@ def _numeric_rows(lines: Sequence[str], start: int, rows: int, cols: int, label:
     return np.asarray(parsed, dtype=np.float64)
 
 
+def _nearest_proper_rotation(rotation: np.ndarray) -> tuple[np.ndarray, float]:
+    """Project an already-near-valid 3x3 rotation to the nearest SO(3) matrix."""
+
+    u, _, vt = np.linalg.svd(np.asarray(rotation, dtype=np.float64))
+    proper = u @ vt
+    if float(np.linalg.det(proper)) < 0.0:
+        # This branch is not expected after the source determinant check, but
+        # keeps the projection mathematically well-defined and right-handed.
+        u = u.copy()
+        u[:, -1] *= -1.0
+        proper = u @ vt
+    correction = float(np.linalg.norm(proper - rotation, ord="fro"))
+    return proper, correction
+
+
 def parse_camera_text(text: str) -> MVSNetCamera:
     """Parse a MVSNet ``*_cam.txt`` file into the canonical benchmark camera."""
 
@@ -133,6 +156,14 @@ def parse_camera_text(text: str) -> MVSNetCamera:
         raise ValueError("camera extrinsic rotation must be orthonormal")
     if not math.isclose(float(np.linalg.det(rotation)), 1.0, abs_tol=1e-5):
         raise ValueError("camera extrinsic rotation must be a proper rotation")
+
+    # BlendedMVS/MVSNet calibration files are decimal text. A rotation that is
+    # valid to their published precision can be a few e-6 away from SO(3), while
+    # RefWorld canonical cameras deliberately enforce a stricter 1e-6 invariant.
+    # Normalize only after the source matrix has already passed the 1e-5 checks.
+    normalized_rotation, rotation_correction = _nearest_proper_rotation(rotation)
+    w2c_cv = w2c_cv.copy()
+    w2c_cv[:3, :3] = normalized_rotation
 
     k = _numeric_rows(lines, intrinsic_index + 1, 3, 3, "intrinsic")
     if k[0, 0] <= 0 or k[1, 1] <= 0 or not np.allclose(k[2], [0, 0, 1], atol=1e-8):
@@ -160,12 +191,17 @@ def parse_camera_text(text: str) -> MVSNetCamera:
         extrinsics=tuple(float(value) for value in c2w_gl.reshape(-1)),
         convention=OPENGL_C2W,
     )
+    # Force canonical validation here so imported-camera failures happen at the
+    # representation boundary, not later during pose metrics or rendering.
+    view_direction(camera)
+
     return MVSNetCamera(
         camera=camera,
         depth_min=float(depth[0]),
         depth_interval=float(depth[1]),
         depth_num=None if len(depth) < 3 else float(depth[2]),
         depth_max=None if len(depth) < 4 else float(depth[3]),
+        rotation_orthonormalization_frobenius=rotation_correction,
     )
 
 
