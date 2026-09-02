@@ -10,6 +10,7 @@ maps. It refuses to proceed if the server stops honoring range requests.
 from __future__ import annotations
 
 import argparse
+import binascii
 import hashlib
 import json
 import sys
@@ -90,8 +91,8 @@ def main() -> int:
             destination = scene_root / relative_path
             if destination.is_file() and destination.stat().st_size == entry.uncompressed_size:
                 existing = destination.read_bytes()
-                crc_ok = (hashlib.sha256(existing).hexdigest() != "")  # force readable-file validation
-                if crc_ok:
+                crc = binascii.crc32(existing) & 0xFFFFFFFF
+                if crc == entry.crc32:
                     print(f"cached: {relative_path.as_posix()}", flush=True)
                     fetched.append(
                         {
@@ -103,6 +104,7 @@ def main() -> int:
                         }
                     )
                     return
+                print(f"cache CRC mismatch; refetching {relative_path.as_posix()}", flush=True)
             print(
                 f"fetch:  {relative_path.as_posix()} ({entry.uncompressed_size / (1024**2):.2f} MiB)",
                 flush=True,
