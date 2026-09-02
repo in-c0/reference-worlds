@@ -1,6 +1,7 @@
 import numpy as np
 import pytest
 
+from refworld.camera import view_direction
 from refworld.datasets.mvsnet import camera_pose_separation, parse_camera_text, parse_pair_text
 from refworld.registration import project_world_points
 
@@ -42,6 +43,20 @@ intrinsic
 0.5 0.01
 """
 
+ROUNDED_NEAR_ROTATION_CAMERA = """extrinsic
+1.000004 0 0 -1
+0 1 0 0
+0 0 1 0
+0 0 0 1
+
+intrinsic
+800 0 320
+0 800 240
+0 0 1
+
+0.5 0.01
+"""
+
 
 def test_pair_parser_preserves_reference_and_ranked_source_order():
     records = parse_pair_text(PAIR_TEXT)
@@ -57,6 +72,7 @@ def test_camera_parser_converts_identity_opencv_w2c_to_canonical_gl_c2w():
     assert parsed.depth_interval == pytest.approx(0.01)
     assert parsed.depth_num == pytest.approx(128)
     assert parsed.depth_max == pytest.approx(1.77)
+    assert parsed.rotation_orthonormalization_frobenius == pytest.approx(0.0, abs=1e-12)
 
     # OpenCV identity sees world +Z. Canonical OpenGL camera must therefore
     # look along world +Z because its local forward axis is -Z.
@@ -68,6 +84,21 @@ def test_camera_center_and_pose_separation_follow_source_extrinsics():
     a = parse_camera_text(IDENTITY_CAMERA).camera
     b = parse_camera_text(TRANSLATED_CAMERA).camera
     separation = camera_pose_separation(a, b)
+    assert separation["view_direction_angle_deg"] == pytest.approx(0.0)
+    assert separation["center_distance_source_units"] == pytest.approx(1.0)
+
+
+def test_rounded_near_rotation_is_normalized_at_import_boundary():
+    parsed = parse_camera_text(ROUNDED_NEAR_ROTATION_CAMERA)
+    rotation = np.asarray(parsed.camera.extrinsics).reshape(4, 4)[:3, :3]
+
+    assert np.linalg.det(rotation) == pytest.approx(1.0, abs=1e-12)
+    assert rotation.T @ rotation == pytest.approx(np.eye(3), abs=1e-12)
+    assert parsed.rotation_orthonormalization_frobenius == pytest.approx(4e-6, rel=1e-5)
+    assert view_direction(parsed.camera) == pytest.approx((0.0, 0.0, 1.0), abs=1e-12)
+
+    identity = parse_camera_text(IDENTITY_CAMERA).camera
+    separation = camera_pose_separation(identity, parsed.camera)
     assert separation["view_direction_angle_deg"] == pytest.approx(0.0)
     assert separation["center_distance_source_units"] == pytest.approx(1.0)
 
