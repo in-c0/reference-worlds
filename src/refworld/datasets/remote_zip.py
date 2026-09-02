@@ -12,7 +12,6 @@ import binascii
 import struct
 import zlib
 from dataclasses import dataclass
-from typing import Iterable
 
 
 @dataclass(frozen=True)
@@ -231,7 +230,7 @@ class RemoteZip:
         else:
             record = entry
         local = self._range(record.local_header_offset, record.local_header_offset + 29)
-        sig, _, _, _, method, _, _, _, _, _, name_len, extra_len = struct.unpack_from("<4s5H3L2H", local, 0)
+        sig, _, _, method, _, _, _, _, _, name_len, extra_len = struct.unpack_from("<4s5H3L2H", local, 0)
         if sig != b"PK\x03\x04":
             raise RuntimeError(f"invalid local ZIP header for {record.name}")
         if int(method) != record.compression_method:
