@@ -53,6 +53,7 @@ def _view_metadata(scene_root: Path, view_id: int) -> dict[str, Any]:
             "depth_interval": camera_file.depth_interval,
             "depth_num": camera_file.depth_num,
             "depth_max": camera_file.depth_max,
+            "rotation_orthonormalization_frobenius": camera_file.rotation_orthonormalization_frobenius,
         },
         "depth": {
             "path": str(depth.relative_to(scene_root)),
