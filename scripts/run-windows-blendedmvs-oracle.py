@@ -2,7 +2,8 @@
 """Run the first calibrated BlendedMVS oracle-geometry B-vs-C experiment on Windows.
 
 Pipeline:
-  selective official ZIP materialization (first frozen scene only)
+  offline dataset-reader contract tests
+  -> selective official split-ZIP materialization (first frozen scene only)
   -> first pair record / first held-out view
   -> oracle anchor-depth calibrated warp (held-out RGB still sealed)
   -> frozen SD2 repaint candidate
@@ -20,7 +21,6 @@ import argparse
 import json
 import os
 import subprocess
-import sys
 from pathlib import Path
 
 
@@ -65,7 +65,20 @@ def main() -> int:
 
     run_checked(
         "Installing/verifying dataset + frozen repaint dependencies",
-        [str(python), "-m", "pip", "install", "-e", ".[dataset,repaint-sd2]"],
+        [str(python), "-m", "pip", "install", "-e", ".[dataset,repaint-sd2,dev]"],
+        cwd=repo_root,
+    )
+
+    run_checked(
+        "Running offline split-ZIP/PFM contract tests",
+        [
+            str(python),
+            "-m",
+            "pytest",
+            "-q",
+            "tests/test_remote_zip.py",
+            "tests/test_pfm.py",
+        ],
         cwd=repo_root,
     )
 
