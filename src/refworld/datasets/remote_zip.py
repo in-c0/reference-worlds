@@ -146,8 +146,6 @@ class RemoteZip:
                 "multi-disk archive detected but final URL does not end in .zip; "
                 "cannot derive .zNN volume URLs safely"
             )
-        # Classic split ZIP disk numbering is zero-based internally while file
-        # suffixes are one-based: disk 0 -> .z01, disk 1 -> .z02, ...
         suffix_number = disk_index + 1
         if suffix_number > 99:
             raise RuntimeError("split ZIP with more than 99 .zNN volumes is not supported")
@@ -378,7 +376,7 @@ class RemoteZip:
             record = entry
 
         local = self._read_spanning(record.disk_start, record.local_header_offset, 30)
-        sig, _, _, _, method, _, _, _, _, _, name_len, extra_len = struct.unpack_from(
+        sig, _, _, method, _, _, _, _, _, name_len, extra_len = struct.unpack_from(
             "<4s5H3L2H", local, 0
         )
         if sig != b"PK\x03\x04":
