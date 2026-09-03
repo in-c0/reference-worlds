@@ -2,9 +2,9 @@
 """Create one calibrated BlendedMVS oracle-source-depth warp for B-vs-C evaluation.
 
 This is an explicit diagnostic ablation, not the full single-image RefWorld-0
-method. It uses the published anchor camera + anchor depth and the first
-published held-out camera from the first pair.txt record. The held-out RGB and
-held-out depth are not read here; they remain evaluation-only evidence.
+method. It uses the published anchor camera + anchor depth and one published
+held-out camera from the first pair.txt record. The held-out RGB and held-out
+depth are not read here; they remain evaluation-only evidence.
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ from typing import Any
 
 import numpy as np
 
-from refworld.datasets.mvsnet import camera_pose_separation, parse_camera_text, parse_pair_text
+from refworld.datasets.mvsnet import PairRecord, camera_pose_separation, parse_camera_text, parse_pair_text
 from refworld.datasets.pfm import read_pfm
 from refworld.proposals import ObservationView, build_view_proposal
 from refworld.repaints import NoRepaintBackend
@@ -43,10 +43,28 @@ def _artifact(path: Path, root: Path, kind: str) -> dict[str, Any]:
     }
 
 
+def _select_held_out(record: PairRecord, held_out_rank: int) -> tuple[int, float]:
+    """Select a 1-based published source rank without reordering or cherry-picking."""
+
+    rank = int(held_out_rank)
+    if rank < 1 or rank > len(record.source_ids):
+        raise ValueError(
+            f"held-out rank must be in [1,{len(record.source_ids)}] for this pair record, got {rank}"
+        )
+    index = rank - 1
+    return int(record.source_ids[index]), float(record.scores[index])
+
+
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Create first calibrated BlendedMVS oracle-depth warp")
+    parser = argparse.ArgumentParser(description="Create calibrated BlendedMVS oracle-depth warp")
     parser.add_argument("--scene-root", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument(
+        "--held-out-rank",
+        type=int,
+        default=1,
+        help="1-based source rank from the first published pair.txt record; default: 1",
+    )
     return parser.parse_args()
 
 
@@ -64,8 +82,7 @@ def main() -> int:
         raise RuntimeError("first pair record has no held-out target")
     first = records[0]
     anchor_id = int(first.reference_id)
-    target_id = int(first.source_ids[0])
-    pair_score = float(first.scores[0])
+    target_id, pair_score = _select_held_out(first, args.held_out_rank)
 
     anchor_stem = f"{anchor_id:08d}"
     target_stem = f"{target_id:08d}"
@@ -132,13 +149,13 @@ def main() -> int:
     separation = camera_pose_separation(anchor_camera, target_camera)
     valid_depth = np.isfinite(anchor_depth) & (anchor_depth > 1e-6)
     manifest = {
-        "version": "0.1",
+        "version": "0.2",
         "stage": "refworld-blendedmvs-oracle-pair",
         "role": "calibrated-oracle-source-depth-diagnostic-not-full-single-image-method",
         "scene_id": scene_root.name,
         "selection": {
             "pair_record_order": 1,
-            "held_out_source_order": 1,
+            "held_out_source_order": int(args.held_out_rank),
             "anchor_view_id": anchor_id,
             "target_view_id": target_id,
             "pair_score": pair_score,
