@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Generate one machine-fit RefWorld repaint candidate with SD2 inpainting.
 
-This is intentionally a *repaint candidate* rather than evidence.  Geometry and
-pixel provenance come from a persisted RefWorld warp-only view.  The generator
+This is intentionally a *repaint candidate* rather than evidence. Geometry and
+pixel provenance come from a persisted RefWorld warp-only view. The generator
 is allowed to edit unresolved pixels plus a fixed context band around them; the
 separate compose-candidate stage decides whether those edits may survive on
 OBSERVED support.
@@ -10,7 +10,6 @@ OBSERVED support.
 The first frozen local protocol is deliberately modest so it can run on an
 8 GiB-class NVIDIA card:
 
-- target: one predeclared +5 degree yaw warp selected by the orchestrator;
 - model: sd2-community/stable-diffusion-2-inpainting (OpenRAIL++ weights);
 - seed: 42;
 - generic prompt, not scene-tuned;
@@ -92,6 +91,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--context-radius", type=int, default=DEFAULT_CONTEXT_RADIUS)
     parser.add_argument("--max-side", type=int, default=DEFAULT_MAX_SIDE)
     parser.add_argument("--prompt", default=DEFAULT_PROMPT)
+    parser.add_argument(
+        "--revision",
+        default=None,
+        help="Exact Hugging Face model revision/commit. If omitted, resolve current repository revision.",
+    )
     return parser.parse_args()
 
 
@@ -113,6 +117,8 @@ def main() -> int:
         raise ValueError("--max-side must be a multiple of 8 in [256,768]")
     if not args.prompt.strip():
         raise ValueError("prompt cannot be empty in the frozen first-candidate protocol")
+    if args.revision is not None and not str(args.revision).strip():
+        raise ValueError("--revision cannot be empty")
 
     try:
         import cv2
@@ -180,10 +186,14 @@ def main() -> int:
     torch.cuda.empty_cache()
     torch.cuda.reset_peak_memory_stats()
 
-    print(f"Resolving exact model revision for {MODEL_REPO}...", flush=True)
-    info = model_info(MODEL_REPO)
-    resolved_revision = str(info.sha)
-    print(f"Resolved model revision: {resolved_revision}", flush=True)
+    if args.revision is None:
+        print(f"Resolving exact model revision for {MODEL_REPO}...", flush=True)
+        info = model_info(MODEL_REPO)
+        resolved_revision = str(info.sha)
+        print(f"Resolved model revision: {resolved_revision}", flush=True)
+    else:
+        resolved_revision = str(args.revision).strip()
+        print(f"Using pinned model revision: {resolved_revision}", flush=True)
     print(
         f"Loading SD2 inpainting fp16 with CPU offload; model canvas {model_width}x{model_height}...",
         flush=True,
@@ -222,7 +232,7 @@ def main() -> int:
     model_output_path = output / "model-output.png"
     result.save(model_output_path)
 
-    # Upscaling is permitted only inside the declared repaint context.  Outside
+    # Upscaling is permitted only inside the declared repaint context. Outside
     # that context the persisted geometric warp is copied byte-for-byte, avoiding
     # a global resampling confound in the B-vs-C experiment.
     upscaled = np.asarray(result.resize((width, height), Image.Resampling.LANCZOS), dtype=np.uint8)
@@ -238,13 +248,14 @@ def main() -> int:
     unresolved_in_context = context & unresolved
     gpu = torch.cuda.get_device_properties(0)
     manifest = {
-        "version": "0.1",
+        "version": "0.2",
         "stage": "refworld-sd2-inpaint-candidate",
         "role": "model-generated-repaint-candidate-not-observation",
         "backend": {
             "id": "sd2-community-stable-diffusion-2-inpainting",
             "repo": MODEL_REPO,
             "resolved_revision": resolved_revision,
+            "revision_was_explicitly_pinned": args.revision is not None,
             "weights_license": "CreativeML Open RAIL++-M",
             "checkpoint_variant": "fp16",
             "safety_checker_loaded": False,
