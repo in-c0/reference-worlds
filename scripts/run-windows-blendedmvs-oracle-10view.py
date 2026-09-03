@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the frozen 10-view BlendedMVS oracle B-vs-C replication on Windows.
+"""Run the frozen BlendedMVS oracle B-vs-C replication on Windows.
 
 Protocol was predeclared after the first held-out result and before viewing any
 additional held-out scores:
@@ -7,12 +7,14 @@ additional held-out scores:
 - first frozen BlendedMVS scene only;
 - first published pair.txt record only;
 - all 10 published source views, in published order;
+- rank 1 / view 136 is the already-seen discovery pair;
+- ranks 2-10 are the primary confirmatory replication set;
 - oracle anchor depth/camera + target camera diagnostic;
-- SD2 revision fixed to the exact revision used for the first calibrated result;
+- SD2 revision fixed to the exact revision used for the discovery result;
 - seed/config fixed across every target;
-- generate all 10 B/C candidates before invoking any replication score stage;
-- then score every view and report all per-view contrasts plus aggregate
-  mean/median/win-count/worst-case values.
+- generate all 10 B/C candidates before invoking any batch score stage;
+- then score every view and report confirmatory-9 statistics separately from
+  descriptive all-10 statistics.
 
 This is still an oracle-geometry diagnostic, not the full single-image method.
 """
@@ -25,11 +27,10 @@ import statistics
 import subprocess
 from pathlib import Path
 
-from refworld.datasets.mvsnet import parse_pair_text
-
 
 SCENE_ID = "5b7a3890fc8fcf6781e2593a"
 EXPECTED_TARGETS = (136, 158, 20, 48, 190, 30, 165, 260, 29, 106)
+DISCOVERY_RANK = 1
 FROZEN_SD2_REVISION = "5f74973cbb64c8568780732c17f43eb269d63a0d"
 FROZEN_SEED = 42
 FROZEN_STEPS = 30
@@ -46,14 +47,18 @@ def run_checked(label: str, command: list[str], *, cwd: Path) -> None:
         raise RuntimeError(f"{label} failed with exit code {completed.returncode}")
 
 
-def summarize(values: list[float]) -> dict[str, float]:
+def summarize(values: list[float]) -> dict[str, float | int]:
     if not values:
         raise ValueError("cannot summarize empty values")
+    wins = sum(value > 0.0 for value in values)
     return {
         "mean": float(statistics.fmean(values)),
         "median": float(statistics.median(values)),
         "minimum_worst_case": float(min(values)),
         "maximum_best_case": float(max(values)),
+        "positive_win_count": int(wins),
+        "nonpositive_count": int(len(values) - wins),
+        "n": int(len(values)),
     }
 
 
@@ -72,34 +77,15 @@ def main() -> int:
             "frozen BlendedMVS scene is not materialized; run scripts/run-windows-blendedmvs-oracle.py once first"
         )
 
-    records = parse_pair_text(pair_path.read_text(encoding="utf-8"))
-    if not records:
-        raise RuntimeError("pair.txt contains no records")
-    first = records[0]
-    actual_targets = tuple(int(value) for value in first.source_ids)
-    if actual_targets != EXPECTED_TARGETS:
-        raise RuntimeError(
-            f"frozen published target order changed: {actual_targets} != {EXPECTED_TARGETS}"
-        )
-
-    experiment_root = (
-        repo_root
-        / "outputs"
-        / "calibrated"
-        / "blendedmvs"
-        / SCENE_ID
-        / "oracle-first-pair-10view"
-    )
-    experiment_root.mkdir(parents=True, exist_ok=True)
-
-    print("RefWorld frozen 10-view calibrated replication", flush=True)
+    print("RefWorld frozen calibrated replication", flush=True)
     print(f"Scene:          {SCENE_ID}", flush=True)
-    print(f"Anchor:         {first.reference_id}", flush=True)
     print(f"Targets:        {list(EXPECTED_TARGETS)}", flush=True)
+    print("Discovery:      rank 1 / target 136 (already seen)", flush=True)
+    print("Confirmatory:   ranks 2-10 (primary replication summary)", flush=True)
     print(f"SD2 revision:   {FROZEN_SD2_REVISION}", flush=True)
     print("SD2 config:     seed=42 steps=30 guidance=4.0 context=16 max-side=512", flush=True)
     print("Geometry:       ORACLE source depth/cameras diagnostic", flush=True)
-    print("Generation rule: all 10 candidates before replication scoring", flush=True)
+    print("Generation rule: all 10 candidates before batch scoring", flush=True)
 
     run_checked(
         "Installing/verifying frozen replication dependencies",
@@ -120,6 +106,28 @@ def main() -> int:
         ],
         cwd=repo_root,
     )
+
+    from refworld.datasets.mvsnet import parse_pair_text
+
+    records = parse_pair_text(pair_path.read_text(encoding="utf-8"))
+    if not records:
+        raise RuntimeError("pair.txt contains no records")
+    first = records[0]
+    actual_targets = tuple(int(value) for value in first.source_ids)
+    if actual_targets != EXPECTED_TARGETS:
+        raise RuntimeError(
+            f"frozen published target order changed: {actual_targets} != {EXPECTED_TARGETS}"
+        )
+
+    experiment_root = (
+        repo_root
+        / "outputs"
+        / "calibrated"
+        / "blendedmvs"
+        / SCENE_ID
+        / "oracle-first-pair-10view"
+    )
+    experiment_root.mkdir(parents=True, exist_ok=True)
 
     generated: list[dict[str, object]] = []
     print("\n========== PHASE 1: GENERATE ALL 10; NO BATCH SCORING ==========", flush=True)
@@ -275,6 +283,7 @@ def main() -> int:
         rows.append(
             {
                 "rank": rank,
+                "role": "discovery" if rank == DISCOVERY_RANK else "confirmatory",
                 "target_view_id": target,
                 "observed_fraction": item["observed_fraction"],
                 "unresolved_fraction": item["unresolved_fraction"],
@@ -288,13 +297,14 @@ def main() -> int:
             }
         )
 
-    full_deltas = [float(row["C_minus_B_psnr_full_db"]) for row in rows]
-    observed_deltas = [float(row["C_minus_B_psnr_observed_db"]) for row in rows]
-    full_wins = sum(value > 0.0 for value in full_deltas)
-    observed_wins = sum(value > 0.0 for value in observed_deltas)
+    all_full = [float(row["C_minus_B_psnr_full_db"]) for row in rows]
+    all_observed = [float(row["C_minus_B_psnr_observed_db"]) for row in rows]
+    confirmatory_rows = [row for row in rows if row["role"] == "confirmatory"]
+    confirm_full = [float(row["C_minus_B_psnr_full_db"]) for row in confirmatory_rows]
+    confirm_observed = [float(row["C_minus_B_psnr_observed_db"]) for row in confirmatory_rows]
 
     aggregate = {
-        "version": "0.1",
+        "version": "0.2",
         "stage": "refworld-blendedmvs-oracle-10view-replication",
         "scope": "oracle-source-depth diagnostic; not full single-image RefWorld-0",
         "protocol": {
@@ -302,7 +312,10 @@ def main() -> int:
             "pair_record_order": 1,
             "anchor_view_id": int(first.reference_id),
             "published_target_order": list(EXPECTED_TARGETS),
-            "target_count": len(EXPECTED_TARGETS),
+            "discovery_rank": DISCOVERY_RANK,
+            "discovery_target_view_id": EXPECTED_TARGETS[0],
+            "primary_confirmatory_ranks": list(range(2, 11)),
+            "primary_confirmatory_target_count": 9,
             "sd2_revision": FROZEN_SD2_REVISION,
             "seed": FROZEN_SEED,
             "steps": FROZEN_STEPS,
@@ -314,15 +327,13 @@ def main() -> int:
         },
         "per_view": rows,
         "aggregate": {
-            "full_frame_C_minus_B_psnr_db": {
-                **summarize(full_deltas),
-                "positive_win_count": int(full_wins),
-                "nonpositive_count": int(len(full_deltas) - full_wins),
+            "primary_confirmatory_ranks_2_to_10": {
+                "full_frame_C_minus_B_psnr_db": summarize(confirm_full),
+                "observed_support_C_minus_B_psnr_db": summarize(confirm_observed),
             },
-            "observed_support_C_minus_B_psnr_db": {
-                **summarize(observed_deltas),
-                "positive_win_count": int(observed_wins),
-                "nonpositive_count": int(len(observed_deltas) - observed_wins),
+            "descriptive_all_10_including_discovery": {
+                "full_frame_C_minus_B_psnr_db": summarize(all_full),
+                "observed_support_C_minus_B_psnr_db": summarize(all_observed),
             },
         },
     }
@@ -332,24 +343,27 @@ def main() -> int:
         encoding="utf-8",
     )
 
-    print("\nTEN-VIEW CALIBRATED ORACLE REPLICATION COMPLETE", flush=True)
-    print("rank target   C-B full dB   C-B observed dB", flush=True)
+    print("\nTEN-VIEW CALIBRATED ORACLE RUN COMPLETE", flush=True)
+    print("rank role         target   C-B full dB   C-B observed dB", flush=True)
     for row in rows:
         print(
-            f"{int(row['rank']):>4} {int(row['target_view_id']):>6}"
+            f"{int(row['rank']):>4} {str(row['role']):<12} {int(row['target_view_id']):>6}"
             f" {float(row['C_minus_B_psnr_full_db']):>+13.4f}"
             f" {float(row['C_minus_B_psnr_observed_db']):>+17.4f}",
             flush=True,
         )
-    full_summary = aggregate["aggregate"]["full_frame_C_minus_B_psnr_db"]
-    obs_summary = aggregate["aggregate"]["observed_support_C_minus_B_psnr_db"]
-    print("\nFull-frame C-B PSNR:", flush=True)
-    print(f"  wins:   {full_wins}/10", flush=True)
+
+    primary = aggregate["aggregate"]["primary_confirmatory_ranks_2_to_10"]
+    full_summary = primary["full_frame_C_minus_B_psnr_db"]
+    obs_summary = primary["observed_support_C_minus_B_psnr_db"]
+    print("\nPRIMARY CONFIRMATORY RESULT — ranks 2-10 only", flush=True)
+    print("Full-frame C-B PSNR:", flush=True)
+    print(f"  wins:   {full_summary['positive_win_count']}/9", flush=True)
     print(f"  mean:   {full_summary['mean']:+.4f} dB", flush=True)
     print(f"  median: {full_summary['median']:+.4f} dB", flush=True)
     print(f"  worst:  {full_summary['minimum_worst_case']:+.4f} dB", flush=True)
     print("Observed-support C-B PSNR:", flush=True)
-    print(f"  wins:   {observed_wins}/10", flush=True)
+    print(f"  wins:   {obs_summary['positive_win_count']}/9", flush=True)
     print(f"  mean:   {obs_summary['mean']:+.4f} dB", flush=True)
     print(f"  median: {obs_summary['median']:+.4f} dB", flush=True)
     print(f"  worst:  {obs_summary['minimum_worst_case']:+.4f} dB", flush=True)
