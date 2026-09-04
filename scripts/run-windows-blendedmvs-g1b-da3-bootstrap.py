@@ -6,9 +6,9 @@ NumPy <2. A prior DA3 runtime dependency install can nevertheless leave NumPy
 2.x in an existing Windows venv. PyTorch 2.3.1/torchvision in the frozen RTX
 2080 lane cannot bridge that ABI and fails before model inference.
 
-This bootstrap performs only environment repair. It does not change target
-selection, DA3 model/configuration, process resolution policy, geometry bridge,
-metrics, thresholds, or evidence access.
+This bootstrap performs environment repair and regression preflight only. It
+does not change target selection, DA3 model/configuration, process resolution
+policy, geometry bridge, metrics, thresholds, or evidence access.
 """
 
 from __future__ import annotations
@@ -63,7 +63,11 @@ def main() -> int:
         [str(python), "-c", probe_code],
         cwd=repo_root,
     )
-
+    run_checked(
+        "Checking DA3 metadata placeholder regression",
+        [str(python), "-m", "pytest", "-q", "tests/test_da3_metadata.py"],
+        cwd=repo_root,
+    )
     run_checked(
         "Running unchanged frozen G1-B DA3 screen",
         [str(python), str(repo_root / "scripts" / "run-windows-blendedmvs-g1b-da3.py")],
