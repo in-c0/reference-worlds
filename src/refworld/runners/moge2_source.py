@@ -64,8 +64,8 @@ def _pixel_intrinsics_from_normalized(k_normalized: np.ndarray, width: int, heig
     k = np.asarray(k_normalized, dtype=np.float64).reshape(3, 3).copy()
     if width <= 0 or height <= 0 or not np.all(np.isfinite(k)):
         raise ValueError("invalid MoGe intrinsics or image dimensions")
-    # MoGe returns normalized image-plane intrinsics: x coordinates are fractions
-    # of image width and y coordinates are fractions of image height.
+    # MoGe constructs K in normalized image coordinates with principal point
+    # (0.5, 0.5), so x quantities scale by width and y quantities by height.
     k[0, :] *= float(width)
     k[1, :] *= float(height)
     k[2, :] = [0.0, 0.0, 1.0]
@@ -74,6 +74,36 @@ def _pixel_intrinsics_from_normalized(k_normalized: np.ndarray, width: int, heig
     if abs(float(k[0, 1])) > 1e-6 or abs(float(k[1, 0])) > 1e-6:
         raise ValueError("G1-A pinhole bridge requires zero-skew MoGe intrinsics")
     return k
+
+
+def _storage_safe_depth(depth: np.ndarray, mask: np.ndarray) -> tuple[np.ndarray, int]:
+    """Preserve valid MoGe depth exactly; sanitize only pixels excluded by its mask.
+
+    The generic RefWorld source-geometry container requires finite positive values
+    everywhere. G1-A separately hash-pins MoGe's validity mask and the bridge sets
+    excluded pixels to NaN before scale fitting/warping, so replacing invalid-only
+    raw values here cannot enter the experiment's geometric evidence.
+    """
+    d = np.asarray(depth, dtype=np.float32)
+    valid = np.asarray(mask, dtype=bool)
+    if d.shape != valid.shape:
+        raise ValueError("depth/mask shape mismatch")
+    if not np.any(valid):
+        raise RuntimeError("MoGe validity mask is empty")
+    if not np.all(np.isfinite(d[valid])) or np.any(d[valid] <= 0.0):
+        raise RuntimeError("MoGe has non-finite or non-positive depth inside its declared valid mask")
+    bad_storage = ~np.isfinite(d) | (d <= 0.0)
+    bad_valid = bad_storage & valid
+    if np.any(bad_valid):
+        raise RuntimeError("MoGe invalid depth intersects declared valid support")
+    storage = d.copy()
+    sanitize = bad_storage & ~valid
+    count = int(np.count_nonzero(sanitize))
+    if count:
+        storage[sanitize] = np.float32(np.median(d[valid]))
+    if not np.all(np.isfinite(storage)) or np.any(storage <= 0.0):
+        raise RuntimeError("storage-safe MoGe depth contract failed")
+    return storage, count
 
 
 def parse_args() -> argparse.Namespace:
@@ -145,15 +175,14 @@ def main() -> int:
         )
     infer_seconds = time.perf_counter() - infer_start
 
-    depth = np.asarray(output["depth"].detach().float().cpu().numpy(), dtype=np.float32)
+    depth_raw = np.asarray(output["depth"].detach().float().cpu().numpy(), dtype=np.float32)
     mask = np.asarray(output["mask"].detach().cpu().numpy(), dtype=bool)
     k_norm = np.asarray(output["intrinsics"].detach().float().cpu().numpy(), dtype=np.float64)
-    if depth.shape != (height, width) or mask.shape != (height, width):
-        raise RuntimeError(f"MoGe output shape mismatch: depth={depth.shape}, mask={mask.shape}, expected={(height, width)}")
-    if not np.all(np.isfinite(depth)) or np.any(depth <= 0.0):
-        raise RuntimeError("MoGe depth must be finite and positive everywhere for source-geometry storage")
-    if not np.any(mask):
-        raise RuntimeError("MoGe validity mask is empty")
+    if depth_raw.shape != (height, width) or mask.shape != (height, width):
+        raise RuntimeError(
+            f"MoGe output shape mismatch: depth={depth_raw.shape}, mask={mask.shape}, expected={(height, width)}"
+        )
+    depth, sanitized_invalid_count = _storage_safe_depth(depth_raw, mask)
     k_pixel = _pixel_intrinsics_from_normalized(k_norm, width, height)
 
     # The G1-A bridge explicitly discards model pose and substitutes benchmark
@@ -174,6 +203,7 @@ def main() -> int:
     np.save(mask_path, mask, allow_pickle=False)
 
     gpu = torch.cuda.get_device_properties(0)
+    valid_fraction = float(np.mean(mask))
     manifest = {
         "version": "0.1",
         "stage": "refworld-source-geometry",
@@ -208,6 +238,9 @@ def main() -> int:
             "confidence_semantics": "synthetic uniform map; not used for G1-A all-valid scale fitting",
             "confidence_calibration": None,
             "validity_mask_artifact_kind": "source-valid-mask-npy",
+            "valid_fraction": valid_fraction,
+            "invalid_only_depth_values_sanitized_for_storage": sanitized_invalid_count,
+            "sanitized_values_used_by_g1a_bridge": False,
         },
         "preprocessing": {
             "input_to_model": "original RGB tensor in [0,1]; MoGe internal resolution control",
@@ -234,9 +267,11 @@ def main() -> int:
         ],
     }
     manifest_path = out / "source-geometry.safe.json"
-    manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True, allow_nan=False) + "\n", encoding="utf-8")
+    manifest_path.write_text(
+        json.dumps(manifest, indent=2, sort_keys=True, allow_nan=False) + "\n", encoding="utf-8"
+    )
     print(manifest_path, flush=True)
-    print(f"MoGe-2 resolution_level={args.resolution_level}; valid_fraction={float(np.mean(mask)):.6f}", flush=True)
+    print(f"MoGe-2 resolution_level={args.resolution_level}; valid_fraction={valid_fraction:.6f}", flush=True)
     print(f"Peak reserved: {torch.cuda.max_memory_reserved() / (1024**3):.2f} GiB", flush=True)
     return 0
 
