@@ -63,6 +63,26 @@ def artifact_record(path: Path, root: Path, kind: str) -> dict[str, Any]:
     }
 
 
+def _optional_scalar_int(value: Any) -> int | None:
+    """Serialize optional upstream scalar metadata without coercing Addict placeholders.
+
+    DA3's OutputProcessor reads ``is_metric`` through attribute access on an
+    Addict mapping. When the key is absent, Addict returns an empty Dict rather
+    than the provided ``getattr(..., 0)`` default. G1-B does not use this field
+    for geometry, scale, masking, or scoring, so missing/non-scalar metadata is
+    recorded explicitly as JSON null instead of being coerced.
+    """
+    if isinstance(value, (bool, np.bool_)):
+        return int(bool(value))
+    if isinstance(value, (int, np.integer)):
+        return int(value)
+    if isinstance(value, (float, np.floating)):
+        number = float(value)
+        if np.isfinite(number) and number.is_integer():
+            return int(number)
+    return None
+
+
 def _map_intrinsics_to_original(
     intrinsics_processed: np.ndarray,
     *,
@@ -394,7 +414,7 @@ def main() -> int:
             "has_raw_sky": raw_sky_processed is not None,
             "has_predicted_intrinsics": prediction.intrinsics is not None,
             "has_predicted_extrinsics": prediction.extrinsics is not None,
-            "prediction_is_metric": int(prediction.is_metric),
+            "prediction_is_metric": _optional_scalar_int(prediction.is_metric),
             "valid_fraction_processed": float(np.mean(valid_processed)),
             "valid_fraction_original": float(np.mean(valid_original)),
         },
