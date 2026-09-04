@@ -30,6 +30,7 @@ MODEL_REVISION = "ee22d50d2aeb9a58c06b2079d2d27bc220e801aa"
 MODEL_SHA256 = "e01067dc1659613083d9145a9a2547ccdbe6ccbbf83c4fe7b3e8a4e2bdae78b5"
 MODEL_SIZE_BYTES = 541_518_028
 ALLOWED_PROCESS_RES = (504, 392, 336)
+UPSTREAM_SKY_THRESHOLD = 0.3
 
 
 def sha256_file(path: Path) -> str:
@@ -101,11 +102,10 @@ def _valid_aware_resize_depth(
 ) -> tuple[np.ndarray, np.ndarray]:
     """Resize depth while refusing interpolation across invalid support.
 
-    DA3 may explicitly mark sky/invalid support. RefWorld source-geometry storage
-    requires a finite positive array everywhere, so this helper returns the real
-    validity mask separately. The caller may fill invalid storage positions only
-    after this function; the G1-B bridge consumes the mask and excludes them from
-    scale fitting and warping.
+    RefWorld source-geometry storage requires a finite positive array everywhere,
+    so this helper returns the real validity mask separately. The caller may fill
+    invalid storage positions only after this function; the G1-B bridge consumes
+    the mask and excludes them from scale fitting and warping.
     """
     import cv2
 
@@ -236,13 +236,33 @@ def main() -> int:
     load_start = time.perf_counter()
     model = DepthAnything3.from_pretrained(str(snapshot)).to("cuda").eval()
     load_seconds = time.perf_counter() - load_start
+
+    # Reproduce the pinned public inference path through its internal stages so
+    # the raw sky tensor remains available. Public Prediction.sky thresholds at
+    # 0.5, while DA3 itself uses 0.3 before replacing sky depth with a synthetic
+    # max value. G1-B must exclude exactly the pixels upstream treated as sky.
     infer_start = time.perf_counter()
-    prediction = model.inference(
+    imgs_cpu, ex_input, in_input = model._preprocess_inputs(
         [str(source)],
-        process_res=process_res,
-        process_res_method="upper_bound_resize",
-        export_dir=None,
+        None,
+        None,
+        process_res,
+        "upper_bound_resize",
     )
+    imgs, ex_t, in_t = model._prepare_model_inputs(imgs_cpu, ex_input, in_input)
+    ex_t_norm = model._normalize_extrinsics(ex_t.clone() if ex_t is not None else None)
+    raw_output = model._run_model_forward(
+        imgs,
+        ex_t_norm,
+        in_t,
+        [],
+        False,
+        False,
+        "saddle_balanced",
+    )
+    raw_sky = raw_output.get("sky", None)
+    prediction = model._convert_to_prediction(raw_output)
+    prediction = model._add_processed_images(prediction, imgs_cpu)
     infer_seconds = time.perf_counter() - infer_start
 
     if prediction.intrinsics is None:
@@ -272,12 +292,15 @@ def main() -> int:
         & (depth_processed > 0.0)
         & np.isfinite(confidence_processed)
     )
-    sky_processed = None
-    if prediction.sky is not None:
-        sky_processed = np.asarray(prediction.sky[0], dtype=bool)
-        if sky_processed.shape != depth_processed.shape:
-            raise RuntimeError("DA3 sky/depth shape mismatch")
-        valid_processed &= ~sky_processed
+    raw_sky_processed = None
+    if raw_sky is not None:
+        raw_sky_np = np.asarray(raw_sky.detach().float().cpu().numpy())
+        if raw_sky_np.ndim != 4 or raw_sky_np.shape[0] != 1 or raw_sky_np.shape[1] != 1:
+            raise RuntimeError(f"unexpected DA3 raw sky shape: {raw_sky_np.shape}")
+        raw_sky_processed = raw_sky_np[0, 0]
+        if raw_sky_processed.shape != depth_processed.shape:
+            raise RuntimeError("DA3 raw sky/depth shape mismatch")
+        valid_processed &= raw_sky_processed < UPSTREAM_SKY_THRESHOLD
 
     depth_original, valid_original = _valid_aware_resize_depth(
         depth_processed,
@@ -354,7 +377,8 @@ def main() -> int:
             "confidence_semantics": "raw DA3 depth confidence remapped to original pixels; not used for G1-B scalar selection",
             "confidence_calibration": None,
             "validity_mask_artifact_kind": "source-valid-mask-npy",
-            "validity_rule": "finite positive depth + finite confidence + not DA3 sky; original pixel valid only with >=0.999 interpolation support",
+            "validity_rule": "finite positive depth + finite confidence + raw DA3 sky < 0.3; original pixel valid only with >=0.999 interpolation support",
+            "upstream_sky_threshold": UPSTREAM_SKY_THRESHOLD,
             "invalid_storage_fill": "median valid predicted depth; excluded by source-valid-mask before scale/warp",
         },
         "preprocessing": {
@@ -367,7 +391,7 @@ def main() -> int:
         },
         "prediction": {
             "has_confidence": prediction.conf is not None,
-            "has_sky": prediction.sky is not None,
+            "has_raw_sky": raw_sky_processed is not None,
             "has_predicted_intrinsics": prediction.intrinsics is not None,
             "has_predicted_extrinsics": prediction.extrinsics is not None,
             "prediction_is_metric": int(prediction.is_metric),
