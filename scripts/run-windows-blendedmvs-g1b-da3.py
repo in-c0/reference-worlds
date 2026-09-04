@@ -13,7 +13,6 @@ import os
 import shutil
 import statistics
 import subprocess
-import sys
 from pathlib import Path
 from typing import Any
 
@@ -145,6 +144,7 @@ def ensure_runtime_dependencies(python: Path, repo_root: Path, da3_root: Path) -
             "install",
             "addict",
             "omegaconf",
+            "evo",
             "einops",
             "tqdm",
             "safetensors",
