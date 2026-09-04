@@ -29,11 +29,22 @@ For each scene, score every condition against the already-opened rank-3 target R
 
 Also report full-frame PSNR and each condition's own OBSERVED fraction as secondary diagnostics.
 
+## Frozen aggregate decision bands
+
+Use the median per-scene common-OBSERVED PSNR delta from `oracle` across scenes 2–10.
+
+- `near oracle`: median delta >= -1.0 dB.
+- `substantially below oracle`: median delta <= -3.0 dB.
+- values strictly between -3.0 and -1.0 dB are intermediate and do not support a clean attribution.
+
+These bands are fixed before any G1-D hybrid score is inspected.
+
 ## Interpretation rule
 
-- If `vggt_depth_oracle_K` remains substantially below oracle while `oracle_depth_vggt_K` is near oracle, depth shape is the dominant failure.
-- If `oracle_depth_vggt_K` remains substantially below oracle while `vggt_depth_oracle_K` is near oracle, intrinsics are the dominant failure.
-- If both hybrids are poor, both components matter or their errors interact.
-- If both hybrids are individually near oracle but `vggt_both` is poor, the failure is primarily coupling/registration between learned depth and learned intrinsics.
+- Depth-shape dominant: `vggt_depth_oracle_K` is substantially below oracle and `oracle_depth_vggt_K` is near oracle.
+- Intrinsics dominant: `oracle_depth_vggt_K` is substantially below oracle and `vggt_depth_oracle_K` is near oracle.
+- Both-components failure: both hybrids are substantially below oracle.
+- Coupling/registration failure: both hybrids are near oracle but `vggt_both` is substantially below oracle.
+- Otherwise: mixed/inconclusive; do not choose a repair from G1-D alone.
 
 G1-D is explanatory only. Any repair selected from these opened rank-3 diagnostics must be frozen before evaluation on a fresh rank-4 target set.
