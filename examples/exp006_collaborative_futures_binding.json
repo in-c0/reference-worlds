@@ -16,9 +16,10 @@
         "id": "lifeos.hero.collaborative-futures",
         "observation": "LifeOS Studio: Collaborative Futures.png (private owner library; binary not committed)",
         "observation_sha256": "4ee7a137e577378a02600ac8a32dc89a7c8409120273622227ad972cc5aff61a",
-        "camera_status": "pending-authored-proxy-registration",
+        "camera_status": "authored-proxy-frozen",
+        "authored_hfov_degrees": 60.0,
         "camera": {
-          "intrinsics": [1, 0, 0, 0, 1, 0, 0, 0, 1],
+          "intrinsics": [1447.9944751275816, 0, 835.5, 0, 1447.9944751275816, 470.0, 0, 0, 1],
           "extrinsics": [1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1],
           "convention": "opengl-camera-to-world"
         }
@@ -85,7 +86,10 @@
           "reference_width": 1672,
           "reference_height": 941,
           "binary_committed": false,
-          "metric_geometry_claim": false
+          "metric_geometry_claim": false,
+          "authored_hfov_degrees": 60.0,
+          "neighbor_translation": 0.04,
+          "minimum_neighbor_observed_fraction": 0.90
         }
       }
     ]
@@ -120,11 +124,11 @@
     }
   ],
   "renderer_binding": {
-    "renderer_id": null,
+    "renderer_id": "refworld.exp006.layered-proxy-v0",
     "owns_semantic_truth": false,
     "asset_manifest": null,
     "hero_camera_id": "lifeos.hero.collaborative-futures",
-    "planned_method": "authored proxy geometry with explicit anchor-projected observed appearance; newly revealed regions remain generated/hypothesized/unknown rather than being relabeled observed",
+    "planned_method": "authored fronto-parallel proxy layers with explicit anchor-projected observed appearance; newly revealed regions remain unknown rather than being inpainted or relabeled observed",
     "metric_reconstruction_claim": false
   },
   "trace_plan": {
