@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
-"""Run the frozen EXP-006 Collaborative Futures authored layered proxy slice.
+"""Run EXP-006 Collaborative Futures authored layered proxy R1.
 
 This consumes only the owner reference image and the bound semantic manifest. It
 never touches BlendedMVS rank-4 evidence, never reads target depth, and makes no
 metric-reconstruction claim.
+
+R1 keeps the R0 camera/layer geometry frozen and changes only display/provenance
+separation: hypothesized fallback pixels may be shown for continuity but remain
+non-observed in the provenance masks.
 """
 
 from __future__ import annotations
@@ -20,6 +24,9 @@ from PIL import Image
 from refworld.exp006_layered_proxy import (
     AUTHORED_HFOV_DEGREES,
     NEIGHBOR_TRANSLATION,
+    R1_ALPHA_AFFECTED_THRESHOLD,
+    R1_ALPHA_OBSERVED_THRESHOLD,
+    R1_FEATHER_RADIUS_PX,
     authored_camera,
     render_triplet,
 )
@@ -34,7 +41,7 @@ EXPECTED_REFERENCE_SHA256 = "4ee7a137e577378a02600ac8a32dc89a7c8409120273622227a
 EXPECTED_WIDTH = 1672
 EXPECTED_HEIGHT = 941
 MIN_NEIGHBOR_OBSERVED_FRACTION = 0.90
-RENDERER_ID = "refworld.exp006.layered-proxy-v0"
+RENDERER_ID = "refworld.exp006.layered-proxy-v1"
 
 
 def sha256_file(path: Path) -> str:
@@ -46,7 +53,7 @@ def sha256_file(path: Path) -> str:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run EXP-006 authored layered proxy")
+    parser = argparse.ArgumentParser(description="Run EXP-006 authored layered proxy R1")
     parser.add_argument("--reference", type=Path, required=True)
     parser.add_argument(
         "--binding",
@@ -56,7 +63,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--output",
         type=Path,
-        default=Path("outputs/exp006/collaborative-futures-layered-proxy-v0"),
+        default=Path("outputs/exp006/collaborative-futures-layered-proxy-v1"),
     )
     return parser.parse_args()
 
@@ -106,18 +113,23 @@ def main() -> int:
     view_reports: dict[str, dict] = {}
     for name, (rgb, observed, shifts) in triplet.items():
         rgb_path = output / f"{name}.png"
-        mask_path = output / f"{name}-observed-mask.png"
+        observed_mask_path = output / f"{name}-observed-mask.png"
+        hypothesized_mask_path = output / f"{name}-hypothesized-mask.png"
         _save_rgb(rgb_path, rgb)
-        _save_mask(mask_path, observed)
+        _save_mask(observed_mask_path, observed)
+        _save_mask(hypothesized_mask_path, ~observed)
         exact = bool(np.array_equal(rgb, reference)) if name == "hero" else False
+        observed_fraction = float(np.mean(observed))
         view_reports[name] = {
             "camera_tx": 0.0
             if name == "hero"
             else (-NEIGHBOR_TRANSLATION if name == "neighbor-left" else NEIGHBOR_TRANSLATION),
-            "observed_fraction": float(np.mean(observed)),
+            "observed_fraction": observed_fraction,
+            "hypothesized_fraction": float(1.0 - observed_fraction),
             "exact_reference_match": exact,
             "rgb": rgb_path.relative_to(output).as_posix(),
-            "observed_mask": mask_path.relative_to(output).as_posix(),
+            "observed_mask": observed_mask_path.relative_to(output).as_posix(),
+            "hypothesized_mask": hypothesized_mask_path.relative_to(output).as_posix(),
             "layer_pixel_shifts": shifts,
         }
 
@@ -160,8 +172,8 @@ def main() -> int:
     )
 
     report = {
-        "version": "0.1",
-        "stage": "refworld-exp006-layered-proxy-v0",
+        "version": "0.2",
+        "stage": "refworld-exp006-layered-proxy-v1",
         "renderer_id": RENDERER_ID,
         "reference": {
             "sha256": actual_sha,
@@ -172,9 +184,16 @@ def main() -> int:
         "authored_camera": camera,
         "frozen_method": {
             "kind": "fronto-parallel-authored-layered-proxy",
+            "r1_change_scope": "display/provenance separation only; R0 camera, translation, layer polygons and depths unchanged",
             "neighbor_translation": NEIGHBOR_TRANSLATION,
             "minimum_neighbor_observed_fraction": MIN_NEIGHBOR_OBSERVED_FRACTION,
+            "hypothesized_display_fill_used": True,
+            "hypothesized_display_fill_source": "edge-padded full-reference background proxy",
+            "hypothesized_display_fill_is_observed": False,
             "unknown_support_inpainted": False,
+            "feather_radius_px": R1_FEATHER_RADIUS_PX,
+            "alpha_affected_threshold": R1_ALPHA_AFFECTED_THRESHOLD,
+            "alpha_observed_threshold": R1_ALPHA_OBSERVED_THRESHOLD,
             "metric_reconstruction_claim": False,
         },
         "views": view_reports,
@@ -192,24 +211,30 @@ def main() -> int:
         },
         "automated_gate_passed": automated_gate_passed,
         "human_visual_review_required": True,
+        "r0_visual_failure_addressed": "internal black disocclusion seams from carved background ownership",
     }
-    report_path = output / "EXP006-LAYERED-PROXY-V0.json"
+    report_path = output / "EXP006-LAYERED-PROXY-V1.json"
     report_path.write_text(
         json.dumps(report, indent=2, sort_keys=True, allow_nan=False) + "\n",
         encoding="utf-8",
     )
 
-    print("EXP-006 LAYERED PROXY V0 COMPLETE")
+    print("EXP-006 LAYERED PROXY V1 COMPLETE")
     print(f"Hero exact reference match: {view_reports['hero']['exact_reference_match']}")
     print(
         "Neighbor observed fractions: "
         f"left={view_reports['neighbor-left']['observed_fraction']:.4f} "
         f"right={view_reports['neighbor-right']['observed_fraction']:.4f}"
     )
+    print(
+        "Neighbor hypothesized fractions: "
+        f"left={view_reports['neighbor-left']['hypothesized_fraction']:.4f} "
+        f"right={view_reports['neighbor-right']['hypothesized_fraction']:.4f}"
+    )
     print(f"Stable IDs after edit/reload: {drift['stable_id_set']}")
     print(f"Collateral semantic drift: {drift['collateral_semantic_drift_count']}")
     print(f"Automated gate: {'PASS' if automated_gate_passed else 'FAIL'}")
-    print("Human visual review of the neighboring views is still required.")
+    print("Human visual review of the R1 neighboring views is still required.")
     print(f"Report: {report_path}")
     print("Rank-4 remains sealed and untouched.")
     return 0
