@@ -22,7 +22,10 @@ def _load_binding():
     )
 
 
-def _synthetic_reference(height=188, width=334):
+def _synthetic_reference(height=470, width=836):
+    # R1 uses a fixed 3 px feather. Keep the synthetic fixture large enough that
+    # the same frozen >=0.90 observed-support gate remains meaningful rather than
+    # failing only because a fixed pixel radius dominates a tiny test canvas.
     y, x = np.mgrid[0:height, 0:width]
     return np.stack(
         [
