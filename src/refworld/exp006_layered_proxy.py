@@ -1,10 +1,11 @@
 """Deterministic authored layered proxy for the first EXP-006 LifeOS slice.
 
 This is an image-based product handoff renderer, not recovered scene geometry.
-The owner reference is partitioned into explicit fronto-parallel proxy layers.
-At the hero camera the partition reconstructs the reference pixel-for-pixel. Small
-lateral camera moves apply depth-dependent parallax; disoccluded support remains
-unknown instead of being silently inpainted or relabeled observed.
+R0 exposed black internal disocclusion seams because foreground ownership was carved
+out of the background texture before depth-dependent shifts. R1 separates display
+continuity from epistemic provenance: a deterministic full-reference background
+proxy may preview newly exposed support, but only hard/near-hard projected source
+support is labelled observed. Feather/fallback pixels remain hypothesized.
 """
 
 from __future__ import annotations
@@ -14,11 +15,14 @@ import math
 from typing import Iterable
 
 import numpy as np
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFilter
 
 
 AUTHORED_HFOV_DEGREES = 60.0
 NEIGHBOR_TRANSLATION = 0.04
+R1_FEATHER_RADIUS_PX = 3.0
+R1_ALPHA_OBSERVED_THRESHOLD = 0.95
+R1_ALPHA_AFFECTED_THRESHOLD = 0.05
 UNKNOWN_RGB = np.array([18, 20, 20], dtype=np.uint8)
 
 
@@ -32,7 +36,8 @@ class LayerSpec:
 
 # Coordinates are authored against the selected Collaborative Futures composition.
 # They are deliberately coarse. No target/depth supervision or learned geometry is
-# used to define these planes.
+# used to define these planes. R1 intentionally leaves these polygons/depths frozen
+# so the repair addresses seam presentation rather than post-hoc geometry tuning.
 DEFAULT_LAYER_SPECS: tuple[LayerSpec, ...] = (
     LayerSpec(
         name="collaboration-table",
@@ -104,24 +109,34 @@ def _polygon_mask(width: int, height: int, polygon: Iterable[tuple[float, float]
     return np.asarray(image, dtype=bool)
 
 
+def authored_layer_masks(
+    width: int,
+    height: int,
+    *,
+    specs: tuple[LayerSpec, ...] = DEFAULT_LAYER_SPECS,
+) -> list[tuple[LayerSpec, np.ndarray]]:
+    layers: list[tuple[LayerSpec, np.ndarray]] = []
+    for spec in specs:
+        if spec.depth <= 0.0:
+            raise ValueError("layer depth must be positive")
+        layers.append((spec, _polygon_mask(width, height, spec.polygon_normalized)))
+    return layers
+
+
 def exclusive_layer_masks(
     width: int,
     height: int,
     *,
     specs: tuple[LayerSpec, ...] = DEFAULT_LAYER_SPECS,
 ) -> list[tuple[LayerSpec, np.ndarray]]:
-    """Return a complete, non-overlapping layer partition.
+    """Return the historical R0 ownership partition.
 
-    Foreground layers claim overlapping pixels first. The background is exactly the
-    complement, which guarantees exact hero reconstruction without pretending that
-    pixels hidden behind foreground objects are known.
+    Retained for audit/tests. R1 display rendering does not carve these masks out of
+    the background texture because doing so produced visible black internal seams.
     """
     claimed = np.zeros((height, width), dtype=bool)
     exclusive: list[tuple[LayerSpec, np.ndarray]] = []
-    for spec in sorted(specs, key=lambda item: item.depth):
-        if spec.depth <= 0.0:
-            raise ValueError("layer depth must be positive")
-        raw = _polygon_mask(width, height, spec.polygon_normalized)
+    for spec, raw in sorted(authored_layer_masks(width, height, specs=specs), key=lambda item: item[0].depth):
         mask = raw & ~claimed
         exclusive.append((spec, mask))
         claimed |= raw
@@ -136,17 +151,11 @@ def exclusive_layer_masks(
     return exclusive
 
 
-def _shift_masked_rgb(
-    reference: np.ndarray,
-    mask: np.ndarray,
-    *,
-    dx: int,
-) -> tuple[np.ndarray, np.ndarray]:
+def _shift_mask(mask: np.ndarray, *, dx: int) -> np.ndarray:
     height, width = mask.shape
-    shifted_rgb = np.zeros_like(reference)
-    shifted_mask = np.zeros_like(mask)
+    shifted = np.zeros_like(mask)
     if abs(dx) >= width:
-        return shifted_rgb, shifted_mask
+        return shifted
 
     if dx >= 0:
         src = slice(0, width - dx)
@@ -155,9 +164,46 @@ def _shift_masked_rgb(
         src = slice(-dx, width)
         dst = slice(0, width + dx)
 
-    shifted_rgb[:, dst] = reference[:, src]
-    shifted_mask[:, dst] = mask[:, src]
-    return shifted_rgb, shifted_mask
+    shifted[:, dst] = mask[:, src]
+    return shifted
+
+
+def _shift_full_rgb_edge_padded(reference: np.ndarray, *, dx: int) -> np.ndarray:
+    """Shift a full-frame display proxy and edge-pad offscreen reveal.
+
+    Padding/fallback is a display hypothesis only. Provenance is tracked separately
+    by the observed mask, so edge-padded or hidden-under-foreground support can never
+    become observed merely because it has pixels to show.
+    """
+    height, width = reference.shape[:2]
+    shifted = np.empty_like(reference)
+    if dx == 0:
+        return reference.copy()
+    if dx >= width:
+        shifted[:] = reference[:, :1]
+        return shifted
+    if dx <= -width:
+        shifted[:] = reference[:, -1:]
+        return shifted
+
+    if dx > 0:
+        shifted[:, dx:] = reference[:, : width - dx]
+        shifted[:, :dx] = reference[:, :1]
+    else:
+        k = -dx
+        shifted[:, : width - k] = reference[:, k:]
+        shifted[:, width - k :] = reference[:, -1:]
+    return shifted
+
+
+def _feather_alpha(mask: np.ndarray, *, radius_px: float) -> np.ndarray:
+    if radius_px < 0.0:
+        raise ValueError("feather radius must be non-negative")
+    if radius_px == 0.0:
+        return mask.astype(np.float32)
+    image = Image.fromarray((mask.astype(np.uint8) * 255), mode="L")
+    blurred = image.filter(ImageFilter.GaussianBlur(radius=float(radius_px)))
+    return np.asarray(blurred, dtype=np.float32) / 255.0
 
 
 def render_view(
@@ -166,11 +212,16 @@ def render_view(
     camera_tx: float,
     hfov_degrees: float = AUTHORED_HFOV_DEGREES,
     specs: tuple[LayerSpec, ...] = DEFAULT_LAYER_SPECS,
+    feather_radius_px: float = R1_FEATHER_RADIUS_PX,
 ) -> tuple[np.ndarray, np.ndarray, dict[str, int]]:
     """Render one pure-lateral authored-proxy camera view.
 
-    `camera_tx` is an authored proxy-world translation. Layer motion follows
-    dx ~= f * tx / depth. No hidden content is synthesized by this function.
+    Display continuity and epistemic provenance are intentionally separate:
+    - RGB starts from a full-frame background proxy so R0 black seam placeholders do
+      not appear inside the scene.
+    - pixels sourced from underneath authored foreground layers, edge padding, and
+      feather-transition bands remain non-observed/hypothesized.
+    - only hard/near-hard source projections are labelled observed.
     """
     reference = np.asarray(reference_rgb, dtype=np.uint8)
     if reference.ndim != 3 or reference.shape[2] != 3:
@@ -179,20 +230,43 @@ def render_view(
     camera = authored_camera(width, height, hfov_degrees=hfov_degrees)
     focal = float(camera["intrinsics"][0])
 
-    output = np.broadcast_to(UNKNOWN_RGB, (height, width, 3)).copy()
-    observed = np.zeros((height, width), dtype=bool)
-    shifts: dict[str, int] = {}
+    raw_layers = authored_layer_masks(width, height, specs=specs)
+    shifts: dict[str, int] = {
+        "atrium-background": int(round(focal * float(camera_tx) / BACKGROUND_DEPTH))
+    }
+    for spec, _mask in raw_layers:
+        shifts[spec.name] = int(round(focal * float(camera_tx) / float(spec.depth)))
 
-    # Composite back to front after foreground-first ownership partitioning.
-    layers = exclusive_layer_masks(width, height, specs=specs)
-    for spec, mask in sorted(layers, key=lambda item: item[0].depth, reverse=True):
-        dx = int(round(focal * float(camera_tx) / float(spec.depth)))
-        shifts[spec.name] = dx
-        shifted_rgb, shifted_mask = _shift_masked_rgb(reference, mask, dx=dx)
-        output[shifted_mask] = shifted_rgb[shifted_mask]
-        observed[shifted_mask] = True
+    if abs(float(camera_tx)) < 1e-12:
+        return reference.copy(), np.ones((height, width), dtype=bool), shifts
 
-    return output, observed, shifts
+    claimed_source = np.zeros((height, width), dtype=bool)
+    for _spec, mask in raw_layers:
+        claimed_source |= mask
+
+    background_dx = shifts["atrium-background"]
+    output = _shift_full_rgb_edge_padded(reference, dx=background_dx).astype(np.float32)
+    observed = _shift_mask(~claimed_source, dx=background_dx)
+
+    # Composite far-to-near. The full-frame texture is only a display fallback;
+    # provenance follows the shifted hard masks and never the fallback pixels.
+    for spec, source_mask in sorted(raw_layers, key=lambda item: item[0].depth, reverse=True):
+        dx = shifts[spec.name]
+        texture = _shift_full_rgb_edge_padded(reference, dx=dx).astype(np.float32)
+        shifted_hard = _shift_mask(source_mask, dx=dx)
+        alpha = _feather_alpha(shifted_hard, radius_px=feather_radius_px)
+
+        output = (
+            alpha[..., None] * texture
+            + (1.0 - alpha[..., None]) * output
+        )
+
+        affected = alpha > R1_ALPHA_AFFECTED_THRESHOLD
+        near_hard = shifted_hard & (alpha >= R1_ALPHA_OBSERVED_THRESHOLD)
+        observed[affected] = False
+        observed[near_hard] = True
+
+    return np.clip(np.rint(output), 0, 255).astype(np.uint8), observed, shifts
 
 
 def render_triplet(reference_rgb: np.ndarray) -> dict[str, tuple[np.ndarray, np.ndarray, dict[str, int]]]:
