@@ -22,30 +22,48 @@ All three are marked `observed` only because they are visibly constrained by the
 
 The project entity maps to the real implementation record `https://github.com/in-c0/lifeos-local-ai/pull/113`. The mapping deliberately does not copy project status, evidence, disclosure or permissions into RefWorld state. Those fields remain authoritative on the LifeOS/GitHub side.
 
-## Renderer hypothesis for the next slice
+## Frozen R0 renderer hypothesis
 
-Do not return to monocular model shopping. The next EXP-006 renderer hypothesis is an **authored anchor proxy**:
+Do not return to monocular model shopping. EXP-006 R0 uses an **authored layered anchor proxy**:
 
-- author coarse proxy geometry sufficient to explain the hero composition and provide two small neighboring camera moves;
-- project the owner reference onto proxy surfaces from the hero camera as explicit `observed` appearance;
-- newly revealed pixels/surfaces may be `generated`, `hypothesized` or `unknown`, never silently promoted to `observed`;
+- renderer id: `refworld.exp006.layered-proxy-v0`;
+- authored hero camera: identity pose, `60.0°` horizontal FOV;
+- hero intrinsics for 1672×941: `fx = fy = 1447.9944751275816`, `cx = 835.5`, `cy = 470.0`;
+- neighboring proxy camera translations: `tx = -0.04` and `tx = +0.04`;
+- coarse fronto-parallel layers are manually fixed from the selected composition before output review;
+- the owner reference is projected as explicit `observed` appearance on those proxy layers;
+- disoccluded pixels are filled with a fixed unknown colour and remain non-observed; there is no inpainting in R0;
 - renderer assets cannot own semantic IDs, project truth or application authority;
-- do not claim metric reconstruction from the image.
+- no metric reconstruction claim is made.
 
 This is an image-based persistent-world product hypothesis, not an extension of G1 learned geometry.
 
-## First renderer gate
+## Automated R0 gate
+
+Before any output review, the automated gate is frozen as all of:
+
+1. reference SHA-256 matches the bound value;
+2. hero frame is an exact pixel match to the reference;
+3. both neighboring views retain at least `0.90` observed-pixel coverage;
+4. the bounded semantic edit changes its target;
+5. entity ID set remains stable after snapshot/reload;
+6. collateral semantic drift count is exactly `0`;
+7. no rank-4 BlendedMVS target is touched.
+
+Passing this gate does **not** establish visual success. Human review of both neighboring views is mandatory because coverage cannot detect ugly parallax, duplicated semantics or implausible proxy structure.
+
+## Full first renderer gate
 
 Before any broader scene generation, require one deterministic run that demonstrates:
 
 1. the reference hash is verified before rendering;
 2. the authored hero camera is frozen and reproducible;
-3. the hero view renders with an explicit observed/generated provenance mask;
-4. two small neighboring viewpoints render without catastrophic structural failure;
-5. the three entity IDs survive both neighboring views and an occlusion/revisit;
-6. `lifeos.system.world-model.panel_mode` can change from `overview` to `project-focus` with zero unrelated semantic drift;
+3. the hero view renders with an explicit observed/unknown provenance mask;
+4. two small neighboring viewpoints render without catastrophic structural failure under human review;
+5. the three entity IDs survive neighboring views and an occlusion/revisit trace;
+6. `lifeos.system.world-model.panel_mode` changes from `overview` to `project-focus` with zero unrelated semantic drift;
 7. snapshot/reload preserves the edit and IDs;
-8. returning to the hero camera yields a measured before/after fidelity score;
+8. returning to the hero camera preserves reference-anchor fidelity;
 9. no rank-4 BlendedMVS target is consumed.
 
 The first renderer implementation may fail this gate. A failure should be attributed to proxy geometry, anchor projection, view continuity, provenance separation, edit locality or persistence—not repaired by silently changing the reference or relabeling generated support as observed.
