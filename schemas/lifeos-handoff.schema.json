@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/in-c0/reference-worlds/blob/main/schemas/lifeos-handoff.schema.json",
+  "title": "EXP-006 LifeOS semantic handoff adapter",
+  "type": "object",
+  "required": [
+    "version",
+    "experiment",
+    "reference_binding",
+    "world_state",
+    "lifeos_mappings",
+    "renderer_binding",
+    "trace_plan"
+  ],
+  "properties": {
+    "version": {"type": "string", "minLength": 1},
+    "experiment": {"const": "EXP-006"},
+    "reference_binding": {
+      "type": "object",
+      "required": ["status", "authority", "observation_id"],
+      "properties": {
+        "status": {"enum": ["pending", "bound"]},
+        "authority": {"const": "owner-supplied-reference"},
+        "observation_id": {"type": ["string", "null"]},
+        "sha256": {
+          "type": ["string", "null"],
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "rights_note": {"type": ["string", "null"]}
+      },
+      "additionalProperties": false
+    },
+    "world_state": {"type": "object"},
+    "lifeos_mappings": {
+      "type": "array",
+      "minItems": 3,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "required": [
+          "entity_id",
+          "role",
+          "authority",
+          "binding_status",
+          "external_id"
+        ],
+        "properties": {
+          "entity_id": {"type": "string", "minLength": 1},
+          "role": {
+            "enum": ["architectural", "project_artifact", "system_instrument"]
+          },
+          "authority": {"const": "lifeos"},
+          "binding_status": {"enum": ["pending", "bound"]},
+          "external_id": {"type": ["string", "null"]},
+          "relationship": {"type": ["string", "null"]},
+          "authoritative_fields": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {"type": "string", "minLength": 1}
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "renderer_binding": {
+      "type": "object",
+      "required": ["renderer_id", "owns_semantic_truth", "asset_manifest"],
+      "properties": {
+        "renderer_id": {"type": ["string", "null"]},
+        "owns_semantic_truth": {"const": false},
+        "asset_manifest": {"type": ["string", "null"]},
+        "hero_camera_id": {"type": ["string", "null"]}
+      },
+      "additionalProperties": true
+    },
+    "trace_plan": {
+      "type": "object",
+      "required": ["ordered_steps", "bounded_edit"],
+      "properties": {
+        "ordered_steps": {
+          "type": "array",
+          "minItems": 12,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "bounded_edit": {
+          "type": "object",
+          "required": ["entity_id", "state_patch"],
+          "properties": {
+            "entity_id": {"type": "string", "minLength": 1},
+            "state_patch": {
+              "type": "object",
+              "minProperties": 1,
+              "additionalProperties": true
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}
