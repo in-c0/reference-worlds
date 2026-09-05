@@ -9,6 +9,7 @@ jsonschema = pytest.importorskip("jsonschema")
 ROOT = Path(__file__).resolve().parents[1]
 REFERENCE_SHA256 = "4ee7a137e577378a02600ac8a32dc89a7c8409120273622227ad972cc5aff61a"
 XUXI_ROOM_RECORD = "https://github.com/in-c0/lifeos-local-ai/pull/113"
+RENDERER_ID = "refworld.exp006.layered-proxy-v0"
 
 
 def _load(path: str):
@@ -28,13 +29,19 @@ def test_reference_is_bound_by_hash_without_metric_geometry_claim():
     binding = _load("examples/exp006_collaborative_futures_binding.json")
     reference = binding["reference_binding"]
     world = binding["world_state"]
+    anchor = world["anchors"][0]
+    payload = world["history"][0]["payload"]
 
     assert reference["status"] == "bound"
     assert reference["sha256"] == REFERENCE_SHA256
-    assert world["anchors"][0]["observation_sha256"] == REFERENCE_SHA256
-    assert world["anchors"][0]["camera_status"] == "pending-authored-proxy-registration"
-    assert world["history"][0]["payload"]["binary_committed"] is False
-    assert world["history"][0]["payload"]["metric_geometry_claim"] is False
+    assert anchor["observation_sha256"] == REFERENCE_SHA256
+    assert anchor["camera_status"] == "authored-proxy-frozen"
+    assert anchor["authored_hfov_degrees"] == 60.0
+    assert anchor["camera"]["intrinsics"][2:6] == [835.5, 0, 1447.9944751275816, 470.0]
+    assert payload["binary_committed"] is False
+    assert payload["metric_geometry_claim"] is False
+    assert payload["neighbor_translation"] == 0.04
+    assert payload["minimum_neighbor_observed_fraction"] == 0.90
     assert binding["renderer_binding"]["metric_reconstruction_claim"] is False
 
 
@@ -74,7 +81,7 @@ def test_renderer_cannot_own_semantic_truth_and_rank4_is_not_part_of_the_slice()
     plan = " ".join(binding["trace_plan"]["ordered_steps"])
 
     assert renderer["owns_semantic_truth"] is False
-    assert renderer["renderer_id"] is None
+    assert renderer["renderer_id"] == RENDERER_ID
     assert "rank-4" not in plan.lower()
     assert binding["trace_plan"]["bounded_edit"] == {
         "entity_id": "lifeos.system.world-model",
