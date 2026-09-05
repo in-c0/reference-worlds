@@ -1,0 +1,152 @@
+{
+  "version": "0.1",
+  "experiment": "EXP-006",
+  "reference_binding": {
+    "status": "bound",
+    "authority": "owner-supplied-reference",
+    "observation_id": "lifeos.hero.collaborative-futures",
+    "sha256": "4ee7a137e577378a02600ac8a32dc89a7c8409120273622227ad972cc5aff61a",
+    "rights_note": "Owner-selected model-generated LifeOS reference from the owner's ChatGPT library. Binary remains private and is not committed; EXP-006 binds only its provenance hash and descriptive metadata."
+  },
+  "world_state": {
+    "version": "0.2",
+    "world_id": "lifeos-exp006-collaborative-futures",
+    "anchors": [
+      {
+        "id": "lifeos.hero.collaborative-futures",
+        "observation": "LifeOS Studio: Collaborative Futures.png (private owner library; binary not committed)",
+        "observation_sha256": "4ee7a137e577378a02600ac8a32dc89a7c8409120273622227ad972cc5aff61a",
+        "camera_status": "pending-authored-proxy-registration",
+        "camera": {
+          "intrinsics": [1, 0, 0, 0, 1, 0, 0, 0, 1],
+          "extrinsics": [1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1],
+          "convention": "opengl-camera-to-world"
+        }
+      }
+    ],
+    "entities": [
+      {
+        "id": "lifeos.atrium.collaboration-table",
+        "kind": "architecture.work_surface",
+        "label": "Central circular collaboration work surface visible in the selected reference",
+        "evidence_origin": "observed",
+        "resolution_state": "hypothesized",
+        "commitment_state": "tentative",
+        "exposure_state": "seen",
+        "spatial_membership": "lifeos.atrium",
+        "provenance": {
+          "observation_ids": ["lifeos.hero.collaborative-futures"]
+        },
+        "state": {
+          "surface_mode": "collaboration"
+        }
+      },
+      {
+        "id": "lifeos.project.xuxi-room",
+        "kind": "project.artifact",
+        "label": "XUXI Room project surface visible in the selected reference",
+        "evidence_origin": "observed",
+        "resolution_state": "hypothesized",
+        "commitment_state": "tentative",
+        "exposure_state": "seen",
+        "spatial_membership": "lifeos.atrium",
+        "provenance": {
+          "observation_ids": ["lifeos.hero.collaborative-futures"]
+        },
+        "state": {
+          "presentation": "project-card"
+        }
+      },
+      {
+        "id": "lifeos.system.world-model",
+        "kind": "system.instrument",
+        "label": "Central world-model instrument visible above the collaboration table",
+        "evidence_origin": "observed",
+        "resolution_state": "hypothesized",
+        "commitment_state": "tentative",
+        "exposure_state": "seen",
+        "spatial_membership": "lifeos.atrium",
+        "provenance": {
+          "observation_ids": ["lifeos.hero.collaborative-futures"]
+        },
+        "state": {
+          "panel_mode": "overview"
+        }
+      }
+    ],
+    "history": [
+      {
+        "seq": 0,
+        "op": "world.reference.bound",
+        "entity_id": null,
+        "proposal_id": null,
+        "payload": {
+          "reference_sha256": "4ee7a137e577378a02600ac8a32dc89a7c8409120273622227ad972cc5aff61a",
+          "reference_width": 1672,
+          "reference_height": 941,
+          "binary_committed": false,
+          "metric_geometry_claim": false
+        }
+      }
+    ]
+  },
+  "lifeos_mappings": [
+    {
+      "entity_id": "lifeos.atrium.collaboration-table",
+      "role": "architectural",
+      "authority": "lifeos",
+      "binding_status": "pending",
+      "external_id": null,
+      "relationship": "spatial-member-of",
+      "authoritative_fields": ["identity", "relations", "application_state"]
+    },
+    {
+      "entity_id": "lifeos.project.xuxi-room",
+      "role": "project_artifact",
+      "authority": "lifeos",
+      "binding_status": "bound",
+      "external_id": "https://github.com/in-c0/lifeos-local-ai/pull/113",
+      "relationship": "represents-project-artifact",
+      "authoritative_fields": ["identity", "project_status", "evidence", "disclosure"]
+    },
+    {
+      "entity_id": "lifeos.system.world-model",
+      "role": "system_instrument",
+      "authority": "lifeos",
+      "binding_status": "pending",
+      "external_id": null,
+      "relationship": "controls-world-interface",
+      "authoritative_fields": ["identity", "permissions", "application_state"]
+    }
+  ],
+  "renderer_binding": {
+    "renderer_id": null,
+    "owns_semantic_truth": false,
+    "asset_manifest": null,
+    "hero_camera_id": "lifeos.hero.collaborative-futures",
+    "planned_method": "authored proxy geometry with explicit anchor-projected observed appearance; newly revealed regions remain generated/hypothesized/unknown rather than being relabeled observed",
+    "metric_reconstruction_claim": false
+  },
+  "trace_plan": {
+    "ordered_steps": [
+      "load-hero",
+      "score-hero-before",
+      "visit-neighbor-a",
+      "visit-neighbor-b",
+      "inspect-three-entities",
+      "occlude-at-least-one-entity",
+      "return-and-verify-identity",
+      "apply-bounded-semantic-edit",
+      "measure-collateral-drift",
+      "navigate-away-and-return",
+      "reload-and-verify-state",
+      "score-hero-after"
+    ],
+    "bounded_edit": {
+      "entity_id": "lifeos.system.world-model",
+      "state_patch": {
+        "panel_mode": "project-focus"
+      }
+    }
+  }
+}
