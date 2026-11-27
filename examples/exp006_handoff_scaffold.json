@@ -1,0 +1,137 @@
+{
+  "version": "0.1",
+  "experiment": "EXP-006",
+  "reference_binding": {
+    "status": "pending",
+    "authority": "owner-supplied-reference",
+    "observation_id": null,
+    "sha256": null,
+    "rights_note": null
+  },
+  "world_state": {
+    "version": "0.2",
+    "world_id": "lifeos-exp006-scaffold",
+    "anchors": [
+      {
+        "id": "lifeos.hero.pending",
+        "observation": "pending-owner-reference",
+        "observation_sha256": null,
+        "camera": {
+          "intrinsics": [1, 0, 0, 0, 1, 0, 0, 0, 1],
+          "extrinsics": [1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1],
+          "convention": "opengl-camera-to-world"
+        }
+      }
+    ],
+    "entities": [
+      {
+        "id": "lifeos.atrium.workbench",
+        "kind": "architecture.work_surface",
+        "label": "EXP-006 architectural entity placeholder",
+        "evidence_origin": "unknown",
+        "resolution_state": "hypothesized",
+        "commitment_state": "tentative",
+        "exposure_state": "unseen",
+        "transform": [1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1],
+        "state": {
+          "mode": "idle"
+        }
+      },
+      {
+        "id": "lifeos.project.artifact",
+        "kind": "project.artifact",
+        "label": "EXP-006 project/artifact entity placeholder",
+        "evidence_origin": "unknown",
+        "resolution_state": "hypothesized",
+        "commitment_state": "tentative",
+        "exposure_state": "unseen",
+        "transform": [1, 0, 0, 0.5, 0, 1, 0, 0.8, 0, 0, 1, 0, 0, 0, 0, 1],
+        "state": {
+          "presentation": "closed"
+        }
+      },
+      {
+        "id": "lifeos.system.console",
+        "kind": "system.instrument",
+        "label": "EXP-006 system/instrument entity placeholder",
+        "evidence_origin": "unknown",
+        "resolution_state": "hypothesized",
+        "commitment_state": "tentative",
+        "exposure_state": "unseen",
+        "transform": [1, 0, 0, -0.7, 0, 1, 0, 1.0, 0, 0, 1, 0, 0, 0, 0, 1],
+        "state": {
+          "mode": "standby"
+        }
+      }
+    ],
+    "history": [
+      {
+        "seq": 0,
+        "op": "world.scaffold.created",
+        "entity_id": null,
+        "proposal_id": null,
+        "payload": {
+          "reference_bound": false,
+          "renderer_bound": false
+        }
+      }
+    ]
+  },
+  "lifeos_mappings": [
+    {
+      "entity_id": "lifeos.atrium.workbench",
+      "role": "architectural",
+      "authority": "lifeos",
+      "binding_status": "pending",
+      "external_id": null,
+      "relationship": "spatial-member-of",
+      "authoritative_fields": ["identity", "relations", "application_state"]
+    },
+    {
+      "entity_id": "lifeos.project.artifact",
+      "role": "project_artifact",
+      "authority": "lifeos",
+      "binding_status": "pending",
+      "external_id": null,
+      "relationship": "represents-project-artifact",
+      "authoritative_fields": ["identity", "project_status", "evidence", "disclosure"]
+    },
+    {
+      "entity_id": "lifeos.system.console",
+      "role": "system_instrument",
+      "authority": "lifeos",
+      "binding_status": "pending",
+      "external_id": null,
+      "relationship": "controls-world-interface",
+      "authoritative_fields": ["identity", "permissions", "application_state"]
+    }
+  ],
+  "renderer_binding": {
+    "renderer_id": null,
+    "owns_semantic_truth": false,
+    "asset_manifest": null,
+    "hero_camera_id": "lifeos.hero.pending"
+  },
+  "trace_plan": {
+    "ordered_steps": [
+      "load-hero",
+      "score-hero-before",
+      "visit-neighbor-a",
+      "visit-neighbor-b",
+      "inspect-three-entities",
+      "occlude-at-least-one-entity",
+      "return-and-verify-identity",
+      "apply-bounded-semantic-edit",
+      "measure-collateral-drift",
+      "navigate-away-and-return",
+      "reload-and-verify-state",
+      "score-hero-after"
+    ],
+    "bounded_edit": {
+      "entity_id": "lifeos.system.console",
+      "state_patch": {
+        "mode": "active"
+      }
+    }
+  }
+}

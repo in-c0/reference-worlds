@@ -1,0 +1,146 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/in-c0/reference-worlds/blob/main/schemas/report.schema.json",
+  "title": "RefWorldBench report",
+  "type": "object",
+  "required": ["version", "system", "sample", "anchor", "runtime"],
+  "properties": {
+    "version": {"type": "string"},
+    "system": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "version": {"type": ["string", "null"]},
+        "configuration": {"type": "object", "additionalProperties": true}
+      },
+      "additionalProperties": true
+    },
+    "sample": {
+      "type": "object",
+      "required": ["id", "input_type"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "input_type": {"enum": ["single-image", "held-out-multiview", "video-360"]},
+        "provenance": {"type": ["string", "null"]},
+        "license": {"type": ["string", "null"]}
+      },
+      "additionalProperties": true
+    },
+    "anchor": {
+      "type": "object",
+      "properties": {
+        "mae": {"type": "number"},
+        "mse": {"type": "number"},
+        "psnr": {"type": ["number", "null"]},
+        "ssim": {"type": ["number", "null"]},
+        "lpips": {"type": ["number", "null"]},
+        "camera_refinement": {"type": "object", "additionalProperties": true}
+      },
+      "additionalProperties": true
+    },
+    "held_out_displacement": {
+      "type": "object",
+      "properties": {
+        "yaw_deg": {"$ref": "#/$defs/curve"},
+        "pitch_deg": {"$ref": "#/$defs/curve"},
+        "translation_m": {"$ref": "#/$defs/curve"},
+        "view_direction_angle_deg": {"$ref": "#/$defs/curve"},
+        "center_distance_source_units": {"$ref": "#/$defs/curve"}
+      },
+      "additionalProperties": true
+    },
+    "afc": {
+      "description": "Deprecated v0 alias for held_out_displacement; retained for early report compatibility.",
+      "type": "object",
+      "properties": {
+        "yaw_deg": {"$ref": "#/$defs/curve"},
+        "pitch_deg": {"$ref": "#/$defs/curve"},
+        "translation_m": {"$ref": "#/$defs/curve"},
+        "view_direction_angle_deg": {"$ref": "#/$defs/curve"},
+        "center_distance_source_units": {"$ref": "#/$defs/curve"}
+      },
+      "additionalProperties": true
+    },
+    "revisit": {
+      "type": "object",
+      "properties": {
+        "metric": {"type": ["string", "null"]},
+        "higher_is_better": {"type": ["boolean", "null"]},
+        "raw_similarity": {"type": ["number", "null"]},
+        "revisit_mean": {"type": ["number", "null"]},
+        "baseline_mean": {"type": ["number", "null"]},
+        "short_mean": {"type": ["number", "null"]},
+        "memory_gain": {"type": ["number", "null"]},
+        "dynamic_range": {"type": ["number", "null"]},
+        "normalized_memory_ratio": {"type": ["number", "null"]},
+        "epsilon": {"type": ["number", "null"], "exclusiveMinimum": 0},
+        "per_metric": {
+          "type": "object",
+          "additionalProperties": {"$ref": "#/$defs/relativeRevisit"}
+        },
+        "explicit_state": {"type": "object", "additionalProperties": true}
+      },
+      "additionalProperties": true
+    },
+    "loop": {
+      "description": "Legacy/free-form loop field retained for early reports. Prefer revisit + explicit_state.",
+      "type": "object",
+      "additionalProperties": true
+    },
+    "semantic_persistence": {"type": "object", "additionalProperties": true},
+    "edit_locality": {"type": "object", "additionalProperties": true},
+    "geometry": {"type": "object", "additionalProperties": true},
+    "runtime": {
+      "type": "object",
+      "properties": {
+        "generation_seconds": {"type": ["number", "null"], "minimum": 0},
+        "asset_bytes": {"type": ["integer", "null"], "minimum": 0},
+        "first_interactive_seconds": {"type": ["number", "null"], "minimum": 0},
+        "fps": {"type": ["number", "null"], "minimum": 0}
+      },
+      "additionalProperties": true
+    },
+    "notes": {"type": "array", "items": {"type": "string"}}
+  },
+  "$defs": {
+    "curve": {
+      "type": "object",
+      "properties": {
+        "displacements": {"type": "array", "items": {"type": "number"}, "minItems": 2},
+        "similarities": {"type": "array", "items": {"type": "number"}, "minItems": 2},
+        "metric": {"type": "string"},
+        "normalized_auc": {"type": ["number", "null"]},
+        "near_anchor_slope": {"type": ["number", "null"]},
+        "failure_radius": {"type": ["number", "null"]},
+        "failure_threshold": {"type": ["number", "null"]}
+      },
+      "required": ["displacements", "similarities", "metric"],
+      "additionalProperties": true
+    },
+    "relativeRevisit": {
+      "type": "object",
+      "properties": {
+        "higher_is_better": {"type": "boolean"},
+        "revisit_mean": {"type": "number"},
+        "baseline_mean": {"type": "number"},
+        "short_mean": {"type": "number"},
+        "memory_gain": {"type": "number"},
+        "dynamic_range": {"type": "number"},
+        "normalized_memory_ratio": {"type": "number"},
+        "epsilon": {"type": "number", "exclusiveMinimum": 0}
+      },
+      "required": [
+        "higher_is_better",
+        "revisit_mean",
+        "baseline_mean",
+        "short_mean",
+        "memory_gain",
+        "dynamic_range",
+        "normalized_memory_ratio"
+      ],
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}
