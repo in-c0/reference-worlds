@@ -1,0 +1,38 @@
+{
+  "id": "refworldbench-blendedmvs-bootstrap-v0",
+  "status": "bootstrap",
+  "dataset": {
+    "name": "BlendedMVS",
+    "upstream_repository": "https://github.com/YoYo000/BlendedMVS",
+    "release": "v1.0.0 low-resolution set",
+    "license": "CC BY 4.0",
+    "resolution": [768, 576],
+    "format": "MVSNet"
+  },
+  "selection_rule": {
+    "scene_rule": "Take every scene in upstream project_lists/validation_list.txt in its published order, then append the first scenes from project_lists/BlendedMVS.txt that are not already in validation_list until 10 total scenes are reached.",
+    "view_rule": "Within each scene, parse cams/pair.txt; use the first reference record as the single world-generation input and retain every source view listed in that record as held-out candidate imagery. Never select views based on model output quality.",
+    "pose_rule": "Use each *_cam.txt calibration to compute actual camera pose separation. Do not label arbitrary held-out views as pure yaw/pitch perturbations. Metric translation is reported only if scene scale is independently established."
+  },
+  "upstream_list_provenance": {
+    "validation_list_sha": "7916fcb77c2a3be62e677980fb9d1996e8bbcae5",
+    "blendedmvs_list_sha": "3709c12a25092fc4dd680b5492f90e8777d290a6"
+  },
+  "scenes": [
+    {"id": "5b7a3890fc8fcf6781e2593a", "selection_source": "validation_list", "order": 1},
+    {"id": "5c189f2326173c3a09ed7ef3", "selection_source": "validation_list", "order": 2},
+    {"id": "5b950c71608de421b1e7318f", "selection_source": "validation_list", "order": 3},
+    {"id": "5a6400933d809f1d8200af15", "selection_source": "validation_list", "order": 4},
+    {"id": "59d2657f82ca7774b1ec081d", "selection_source": "validation_list", "order": 5},
+    {"id": "5ba19a8a360c7c30c1c169df", "selection_source": "validation_list", "order": 6},
+    {"id": "59817e4a1bd4b175e7038d19", "selection_source": "validation_list", "order": 7},
+    {"id": "5c1f33f1d33e1f2e4aa6dda4", "selection_source": "first_non_validation_in_BlendedMVS_list", "order": 8},
+    {"id": "5bfe5ae0fe0ea555e6a969ca", "selection_source": "first_non_validation_in_BlendedMVS_list", "order": 9},
+    {"id": "5bff3c5cfe0ea555e6bcbf3a", "selection_source": "first_non_validation_in_BlendedMVS_list", "order": 10}
+  ],
+  "notes": [
+    "This scene set was frozen before running Marble or any competing world generator.",
+    "The first three non-validation scenes are appended only because the official validation list contains seven scenes.",
+    "The bootstrap is for pipeline debugging and initial falsification, not a final statistically representative benchmark split."
+  ]
+}

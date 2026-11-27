@@ -1,0 +1,16 @@
+__pycache__/
+.pytest_cache/
+.venv/
+.venv-refworld/
+.upstream/
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+dist/
+build/
+*.egg-info/
+.DS_Store
+outputs/
+private-data/
